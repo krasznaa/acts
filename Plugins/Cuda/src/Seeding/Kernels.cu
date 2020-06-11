@@ -104,7 +104,8 @@ namespace Acts{
     
     //int sharedMemSize = (2*sizeof(int))*block.x + 2*sizeof(int);
     int sharedMemSize = 2*sizeof(int);
-    
+	 
+	 std::cout << "grid = {" << grid.x << ", " << grid.y << ", " << grid.z << "}, block = {" << block.x << ", " << block.y << ", " << block.z << "}, sharedMemSize = " << sharedMemSize << std::endl;
     cuSearchDoublet<<< grid, block, sharedMemSize >>>(
 				  nSpM, spMmat,
 				  nSpB, spBmat,
@@ -145,7 +146,8 @@ namespace Acts{
 			    float* spTcompMatPerSpM,
 			    float* circTcompMatPerSpM
 			    ){
-    int sharedMemSize = sizeof(float)*6;
+	 int sharedMemSize = sizeof(float)*6;
+	 std::cout << "grid = {" << grid.x << ", " << grid.y << ", " << grid.z << "}, block = {" << block.x << ", " << block.y << ", " << block.z << "}, sharedMemSize = " << sharedMemSize << std::endl;
     cuTransformCoordinate<<< grid, block, sharedMemSize >>>(
 				      nSpM,
 				      spMmat,

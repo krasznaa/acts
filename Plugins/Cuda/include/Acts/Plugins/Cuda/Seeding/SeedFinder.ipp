@@ -89,6 +89,7 @@ SeedFinder<external_spacepoint_t, Acts::Cuda>::createSeedsForGroup(
     nSpT++;
     topSPvec.push_back(sp);
   }
+  std::cout << "nSpM = " << nSpM << ", nSpB = " << nSpB << ", nSpT = " << nSpT << std::endl;
 
   CudaScalar<int> nSpM_cuda(&nSpM);
   CudaScalar<int> nSpB_cuda(&nSpB);
@@ -180,17 +181,19 @@ SeedFinder<external_spacepoint_t, Acts::Cuda>::createSeedsForGroup(
   CudaMatrix<float> circTcompMatPerSpM_cuda(*nSpTcompPerSpMMax_cpu.get(),
                                             (*nSpMcomp_cpu.get()) * 6);
 
-  dim3 TC_GridSize(*nSpMcomp_cpu.get(), 1, 1);
-  dim3 TC_BlockSize = m_config.maxBlockSize;
+  if((*nSpMcomp_cpu.get()) != 0) {
+    dim3 TC_GridSize(*nSpMcomp_cpu.get(), 1, 1);
+    dim3 TC_BlockSize = m_config.maxBlockSize;
 
-  transformCoordinate(
-      TC_GridSize, TC_BlockSize, nSpM_cuda.get(), spMmat_cuda.get(),
-      McompIndex_cuda.get(), nSpB_cuda.get(), spBmat_cuda.get(),
-      nSpBcompPerSpMMax_cuda.get(), BcompIndex_cuda.get(), nSpT_cuda.get(),
-      spTmat_cuda.get(), nSpTcompPerSpMMax_cuda.get(), TcompIndex_cuda.get(),
-      spMcompMat_cuda.get(), spBcompMatPerSpM_cuda.get(),
-      circBcompMatPerSpM_cuda.get(), spTcompMatPerSpM_cuda.get(),
-      circTcompMatPerSpM_cuda.get());
+    transformCoordinate(
+        TC_GridSize, TC_BlockSize, nSpM_cuda.get(), spMmat_cuda.get(),
+        McompIndex_cuda.get(), nSpB_cuda.get(), spBmat_cuda.get(),
+        nSpBcompPerSpMMax_cuda.get(), BcompIndex_cuda.get(), nSpT_cuda.get(),
+        spTmat_cuda.get(), nSpTcompPerSpMMax_cuda.get(), TcompIndex_cuda.get(),
+        spMcompMat_cuda.get(), spBcompMatPerSpM_cuda.get(),
+        circBcompMatPerSpM_cuda.get(), spTcompMatPerSpM_cuda.get(),
+        circTcompMatPerSpM_cuda.get());
+  }
 
   //------------------------------------------------------
   //  Algorithm 3. Triplet Search (TS) & Seed filtering
