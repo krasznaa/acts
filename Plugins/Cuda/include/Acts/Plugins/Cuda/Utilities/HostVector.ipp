@@ -53,6 +53,11 @@ template <typename T>
 typename HostVector<T>::Variable_t*
 HostVector<T>::getPtr(size_t offset) {
 
+  // If the vector is empty, return a null pointer.
+  if(m_size == 0) {
+    return nullptr;
+  }
+
   // Some security check(s).
   assert(offset < m_size);
 
@@ -63,6 +68,11 @@ HostVector<T>::getPtr(size_t offset) {
 template <typename T>
 const typename HostVector<T>::Variable_t*
 HostVector<T>::getPtr(size_t offset) const {
+
+  // If the vector is empty, return a null pointer.
+  if(m_size == 0) {
+    return nullptr;
+  }
 
   // Some security check(s).
   assert(offset < m_size);
@@ -87,7 +97,7 @@ void HostVector<T>::copyFrom(const Variable_t* devPtr, size_t len,
                              size_t offset) {
 
   // Some security check(s).
-  assert(offset + len < m_size);
+  assert(offset + len <= m_size);
 
   // Do the copy.
   ACTS_CUDA_ERROR_CHECK(cudaMemcpy(m_array.get() + offset, devPtr,
@@ -101,7 +111,7 @@ void HostVector<T>::copyFrom(const Variable_t* devPtr, size_t len,
                              size_t offset, cudaStream_t stream) {
 
   // Some security check(s).
-  assert(offset + len < m_size);
+  assert(offset + len <= m_size);
 
   // Do the copy.
   ACTS_CUDA_ERROR_CHECK(cudaMemcpyAsync(m_array.get() + offset, devPtr,

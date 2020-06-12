@@ -53,6 +53,11 @@ template <typename T>
 typename DeviceVector<T>::Variable_t*
 DeviceVector<T>::getPtr(size_t offset) {
 
+  // If the vector is empty, return a null pointer.
+  if(m_size == 0) {
+    return nullptr;
+  }
+
   // Some security check(s).
   assert(offset < m_size);
 
@@ -63,6 +68,11 @@ DeviceVector<T>::getPtr(size_t offset) {
 template <typename T>
 const typename DeviceVector<T>::Variable_t*
 DeviceVector<T>::getPtr(size_t offset) const {
+
+  // If the vector is empty, return a null pointer.
+  if(m_size == 0) {
+    return nullptr;
+  }
 
   // Some security check(s).
   assert(offset < m_size);
@@ -87,7 +97,7 @@ void DeviceVector<T>::copyFrom(const Variable_t* hostPtr, size_t len,
                                size_t offset) {
 
   // Some security check(s).
-  assert(offset + len < m_size);
+  assert(offset + len <= m_size);
 
   // Do the copy.
   ACTS_CUDA_ERROR_CHECK(cudaMemcpy(m_array.get() + offset, hostPtr,
@@ -101,7 +111,7 @@ void DeviceVector<T>::copyFrom(const Variable_t* hostPtr, size_t len,
                                size_t offset, cudaStream_t stream) {
 
   // Some security check(s).
-  assert(offset + len < m_size);
+  assert(offset + len <= m_size);
 
   // Do the copy.
   ACTS_CUDA_ERROR_CHECK(cudaMemcpyAsync(m_array.get() + offset, hostPtr,
@@ -113,7 +123,8 @@ void DeviceVector<T>::copyFrom(const Variable_t* hostPtr, size_t len,
 template <typename T>
 void DeviceVector<T>::zeros() {
 
-  memset(m_array.get(), 0, m_size * sizeof(Variable_t));
+  ACTS_CUDA_ERROR_CHECK(cudaMemset(m_array.get(), 0,
+                                   m_size * sizeof(Variable_t)));
   return;
 }
 

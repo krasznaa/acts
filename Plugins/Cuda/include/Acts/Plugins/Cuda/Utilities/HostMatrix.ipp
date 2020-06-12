@@ -56,6 +56,11 @@ template< typename T >
 typename HostMatrix< T >::Variable_t*
 HostMatrix< T >::getPtr(size_t row, size_t col) {
 
+  // If the matrix is empty, just return a null pointer.
+  if((m_nRows == 0) || (m_nCols == 0)) {
+    return nullptr;
+  }
+
   // Some security check(s).
   assert(row < m_nRows);
   assert(col < m_nCols);
@@ -67,6 +72,11 @@ HostMatrix< T >::getPtr(size_t row, size_t col) {
 template< typename T >
 const typename HostMatrix< T >::Variable_t*
 HostMatrix< T >::getPtr(size_t row, size_t col) const {
+
+  // If the matrix is empty, just return a null pointer.
+  if((m_nRows == 0) || (m_nCols == 0)) {
+    return nullptr;
+  }
 
   // Some security check(s).
   assert(row < m_nRows);
@@ -93,7 +103,7 @@ void HostMatrix< T >::copyFrom(const Variable_t* devPtr, size_t len,
                                size_t offset) {
 
   // Some security check(s).
-  assert(offset + len < m_nRows * m_nCols);
+  assert(offset + len <= m_nRows * m_nCols);
 
   // Do the copy.
   ACTS_CUDA_ERROR_CHECK(cudaMemcpy(m_array.get() + offset, devPtr,
@@ -107,7 +117,7 @@ void HostMatrix< T >::copyFrom(const Variable_t* devPtr, size_t len,
                                size_t offset, cudaStream_t stream) {
 
   // Some security check(s).
-  assert(offset + len < m_nRows * m_nCols);
+  assert(offset + len <= m_nRows * m_nCols);
 
   // Do the copy.
   ACTS_CUDA_ERROR_CHECK(cudaMemcpyAsync(m_array.get() + offset, devPtr,
