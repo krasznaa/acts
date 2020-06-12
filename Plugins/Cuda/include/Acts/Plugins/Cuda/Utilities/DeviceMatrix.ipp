@@ -21,16 +21,16 @@
 namespace Acts {
 namespace Cuda {
 
-template< typename T >
-HostMatrix< T >::HostMatrix( size_t nRows, size_t nCols )
-: m_nRows( nRows ), m_nCols( nCols ),
-  m_array( make_host_array< T >( nRows * nCols ) ) {
+template <typename T>
+DeviceMatrix<T>::DeviceMatrix(size_t nRows, size_t nCols)
+: m_nRows(nRows), m_nCols(nCols),
+  m_array(make_device_array<T>(nRows * nCols)) {
 
 }
 
-template< typename T >
-typename HostMatrix< T >::Variable_t&
-HostMatrix< T >::get(size_t row, size_t col) {
+template <typename T>
+typename DeviceMatrix<T>::Variable_t&
+DeviceMatrix<T>::get(size_t row, size_t col) {
 
   // Some security check(s).
   assert(row < m_nRows);
@@ -40,9 +40,9 @@ HostMatrix< T >::get(size_t row, size_t col) {
   return m_array.get()[row + col * m_nRows];
 }
 
-template< typename T >
-const typename HostMatrix< T >::Variable_t&
-HostMatrix< T >::get(size_t row, size_t col) const {
+template <typename T>
+const typename DeviceMatrix<T>::Variable_t&
+DeviceMatrix<T>::get(size_t row, size_t col) const {
 
   // Some security check(s).
   assert(row < m_nRows);
@@ -52,9 +52,9 @@ HostMatrix< T >::get(size_t row, size_t col) const {
   return m_array.get()[row + col * m_nRows];
 }
 
-template< typename T >
-typename HostMatrix< T >::Variable_t*
-HostMatrix< T >::getPtr(size_t row, size_t col) {
+template <typename T>
+typename DeviceMatrix<T>::Variable_t*
+DeviceMatrix<T>::getPtr(size_t row, size_t col) {
 
   // Some security check(s).
   assert(row < m_nRows);
@@ -64,9 +64,9 @@ HostMatrix< T >::getPtr(size_t row, size_t col) {
   return m_array.get() + row + col * m_nRows;
 }
 
-template< typename T >
-const typename HostMatrix< T >::Variable_t*
-HostMatrix< T >::getPtr(size_t row, size_t col) const {
+template <typename T>
+const typename DeviceMatrix<T>::Variable_t*
+DeviceMatrix<T>::getPtr(size_t row, size_t col) const {
 
   // Some security check(s).
   assert(row < m_nRows);
@@ -76,8 +76,8 @@ HostMatrix< T >::getPtr(size_t row, size_t col) const {
   return m_array.get() + row + col * m_nRows;
 }
 
-template< typename T >
-void HostMatrix< T >::set(size_t row, size_t col, Variable_t val) {
+template <typename T>
+void DeviceMatrix<T>::set(size_t row, size_t col, Variable_t val) {
 
   // Some security check(s).
   assert(row < m_nRows);
@@ -88,36 +88,36 @@ void HostMatrix< T >::set(size_t row, size_t col, Variable_t val) {
   return;
 }
 
-template< typename T >
-void HostMatrix< T >::copyFrom(const Variable_t* devPtr, size_t len,
+template <typename T>
+void DeviceMatrix<T>::copyFrom(const Variable_t* hostPtr, size_t len,
                                size_t offset) {
 
   // Some security check(s).
   assert(offset + len < m_nRows * m_nCols);
 
   // Do the copy.
-  ACTS_CUDA_ERROR_CHECK(cudaMemcpy(m_array.get() + offset, devPtr,
+  ACTS_CUDA_ERROR_CHECK(cudaMemcpy(m_array.get() + offset, hostPtr,
                                    len * sizeof(Variable_t),
-                                   cudaMemcpyDeviceToHost));
+                                   cudaMemcpyHostToDevice));
   return;
 }
 
-template< typename T >
-void HostMatrix< T >::copyFrom(const Variable_t* devPtr, size_t len,
+template <typename T>
+void DeviceMatrix<T>::copyFrom(const Variable_t* hostPtr, size_t len,
                                size_t offset, cudaStream_t stream) {
 
   // Some security check(s).
   assert(offset + len < m_nRows * m_nCols);
 
   // Do the copy.
-  ACTS_CUDA_ERROR_CHECK(cudaMemcpyAsync(m_array.get() + offset, devPtr,
+  ACTS_CUDA_ERROR_CHECK(cudaMemcpyAsync(m_array.get() + offset, hostPtr,
                                         len * sizeof(Variable_t),
-                                        cudaMemcpyDeviceToHost, stream));
+                                        cudaMemcpyHostToDevice, stream));
   return;
 }
 
-template< typename T >
-void HostMatrix< T >::zeros() {
+template <typename T>
+void DeviceMatrix<T>::zeros() {
 
   memset(m_array.get(), 0, m_nRows * m_nCols * sizeof(Variable_t));
   return;
