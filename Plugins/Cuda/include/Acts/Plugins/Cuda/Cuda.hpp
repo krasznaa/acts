@@ -14,5 +14,5 @@
 #include "Acts/Plugins/Cuda/Utilities/DeviceMatrix.cuh"
 #include "Acts/Plugins/Cuda/Utilities/CudaScalar.cu"
 #include "Acts/Plugins/Cuda/Utilities/CudaUtils.cu"
-#include "Acts/Plugins/Cuda/Utilities/CudaVector.cu"
+#include "Acts/Plugins/Cuda/Utilities/DeviceVector.cuh"
 #include "Acts/Plugins/Cuda/Utilities/CopyFunctions.cuh"

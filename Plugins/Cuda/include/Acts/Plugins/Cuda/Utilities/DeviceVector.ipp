@@ -22,14 +22,14 @@ namespace Acts {
 namespace Cuda {
 
 template <typename T>
-HostVector<T>::HostVector(size_t size)
-: m_size(size), m_array(make_host_array<T>(size)) {
+DeviceVector<T>::DeviceVector(size_t size)
+: m_size(size), m_array(make_device_array<T>(size)) {
 
 }
 
 template <typename T>
-typename HostVector<T>::Variable_t&
-HostVector<T>::get(size_t offset) {
+typename DeviceVector<T>::Variable_t&
+DeviceVector<T>::get(size_t offset) {
 
   // Some security check(s).
   assert(offset < m_size);
@@ -39,8 +39,8 @@ HostVector<T>::get(size_t offset) {
 }
 
 template <typename T>
-const typename HostVector<T>::Variable_t&
-HostVector<T>::get(size_t offset) const {
+const typename DeviceVector<T>::Variable_t&
+DeviceVector<T>::get(size_t offset) const {
 
   // Some security check(s).
   assert(offset < m_size);
@@ -50,8 +50,8 @@ HostVector<T>::get(size_t offset) const {
 }
 
 template <typename T>
-typename HostVector<T>::Variable_t*
-HostVector<T>::getPtr(size_t offset) {
+typename DeviceVector<T>::Variable_t*
+DeviceVector<T>::getPtr(size_t offset) {
 
   // Some security check(s).
   assert(offset < m_size);
@@ -61,8 +61,8 @@ HostVector<T>::getPtr(size_t offset) {
 }
 
 template <typename T>
-const typename HostVector<T>::Variable_t*
-HostVector<T>::getPtr(size_t offset) const {
+const typename DeviceVector<T>::Variable_t*
+DeviceVector<T>::getPtr(size_t offset) const {
 
   // Some security check(s).
   assert(offset < m_size);
@@ -72,7 +72,7 @@ HostVector<T>::getPtr(size_t offset) const {
 }
 
 template <typename T>
-void HostVector<T>::set(size_t offset, Variable_t val) {
+void DeviceVector<T>::set(size_t offset, Variable_t val) {
 
   // Some security check(s).
   assert(offset < m_size);
@@ -83,35 +83,35 @@ void HostVector<T>::set(size_t offset, Variable_t val) {
 }
 
 template <typename T>
-void HostVector<T>::copyFrom(const Variable_t* devPtr, size_t len,
-                             size_t offset) {
+void DeviceVector<T>::copyFrom(const Variable_t* hostPtr, size_t len,
+                               size_t offset) {
 
   // Some security check(s).
   assert(offset + len < m_size);
 
   // Do the copy.
-  ACTS_CUDA_ERROR_CHECK(cudaMemcpy(m_array.get() + offset, devPtr,
+  ACTS_CUDA_ERROR_CHECK(cudaMemcpy(m_array.get() + offset, hostPtr,
                                    len * sizeof(Variable_t),
-                                   cudaMemcpyDeviceToHost));
+                                   cudaMemcpyHostToDevice));
   return;
 }
 
 template <typename T>
-void HostVector<T>::copyFrom(const Variable_t* devPtr, size_t len,
-                             size_t offset, cudaStream_t stream) {
+void DeviceVector<T>::copyFrom(const Variable_t* hostPtr, size_t len,
+                               size_t offset, cudaStream_t stream) {
 
   // Some security check(s).
   assert(offset + len < m_size);
 
   // Do the copy.
-  ACTS_CUDA_ERROR_CHECK(cudaMemcpyAsync(m_array.get() + offset, devPtr,
+  ACTS_CUDA_ERROR_CHECK(cudaMemcpyAsync(m_array.get() + offset, hostPtr,
                                         len * sizeof(Variable_t),
-                                        cudaMemcpyDeviceToHost, stream));
+                                        cudaMemcpyHostToDevice, stream));
   return;
 }
 
 template <typename T>
-void HostVector<T>::zeros() {
+void DeviceVector<T>::zeros() {
 
   memset(m_array.get(), 0, m_size * sizeof(Variable_t));
   return;

@@ -17,16 +17,16 @@
 namespace Acts {
 namespace Cuda {
 
-/// Vector holding data in host-pinned memory
+/// Vector holding data in device memory
 template <typename T>
-class HostVector {
+class DeviceVector {
 
 public:
   /// The variable type being used
   typedef T Variable_t;
 
-  /// Create a vector in host memory
-  HostVector(size_t size);
+  /// Create a vector in the/a device's memory
+  DeviceVector(size_t size);
 
   /// Get the size of the vector
   size_t size() const { return m_size; }
@@ -44,10 +44,10 @@ public:
   /// Set a specific element of the vector
   void set(size_t offset, Variable_t val);
 
-  /// Copy memory from a/the device.
-  void copyFrom(const Variable_t* devPtr, size_t len, size_t offset);
-  /// Copy memory from a/the device asynchronously.
-  void copyFrom(const Variable_t* devPtr, size_t len, size_t offset,
+  /// Copy memory from the host.
+  void copyFrom(const Variable_t* hostPtr, size_t len, size_t offset);
+  /// Copy memory from the host asynchronously.
+  void copyFrom(const Variable_t* hostPtr, size_t len, size_t offset,
                 cudaStream_t stream);
 
   /// Reset the vector to all zeros
@@ -57,12 +57,12 @@ private:
   /// The size of the vector
   size_t m_size;
   /// Smart pointer managing the vector's memory
-  host_array< Variable_t > m_array;
+  device_array< Variable_t > m_array;
 
-}; // class HostVector
+}; // class DeviceVector
 
 } // namespace Cuda
 } // namespace Acts
 
 // Include the template implementation.
-#include "HostVector.ipp"
+#include "DeviceVector.ipp"
