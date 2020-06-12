@@ -12,9 +12,10 @@
 #include <type_traits>
 
 namespace Acts {
+namespace Cuda {
 
 template <typename external_spacepoint_t>
-Seedfinder<external_spacepoint_t, Acts::Cuda>::Seedfinder(
+Seedfinder<external_spacepoint_t>::Seedfinder(
     Acts::SeedfinderConfig<external_spacepoint_t> config)
     : m_config(std::move(config)) {
   // calculation of scattering using the highland formula
@@ -38,7 +39,7 @@ Seedfinder<external_spacepoint_t, Acts::Cuda>::Seedfinder(
 template <typename external_spacepoint_t>
 template <typename sp_range_t>
 std::vector<Seed<external_spacepoint_t>>
-Seedfinder<external_spacepoint_t, Acts::Cuda>::createSeedsForGroup(
+Seedfinder<external_spacepoint_t>::createSeedsForGroup(
     sp_range_t bottomSPs, sp_range_t middleSPs, sp_range_t topSPs) const {
   std::vector<Seed<external_spacepoint_t>> outputVec;
 
@@ -98,9 +99,9 @@ Seedfinder<external_spacepoint_t, Acts::Cuda>::createSeedsForGroup(
     return outputVec;
 
   // Matrix flattening
-  CpuMatrix<float> spMmat_cpu(nSpM, 6);  // x y z r varR varZ
-  CpuMatrix<float> spBmat_cpu(nSpB, 6);
-  CpuMatrix<float> spTmat_cpu(nSpT, 6);
+  HostMatrix<float> spMmat_cpu(nSpM, 6);  // x y z r varR varZ
+  HostMatrix<float> spBmat_cpu(nSpB, 6);
+  HostMatrix<float> spTmat_cpu(nSpT, 6);
 
   auto fillMatrix = [](auto& mat, auto& id, auto sp) {
     mat.set(id, 0, sp->x());
@@ -210,8 +211,7 @@ Seedfinder<external_spacepoint_t, Acts::Cuda>::createSeedsForGroup(
                                           *nSpMcomp_cpu.get());
   CpuVector<int> nTrplPerSpM_cpu(*nSpMcomp_cpu.get(), true);
   nTrplPerSpM_cpu.zeros();
-  CpuMatrix<Triplet> TripletsPerSpM_cpu(nTrplPerSpMLimit, *nSpMcomp_cpu.get(),
-                                        true);
+  HostMatrix<Triplet> TripletsPerSpM_cpu(nTrplPerSpMLimit, *nSpMcomp_cpu.get());
   cudaStream_t cuStream;
   cudaStreamCreate(&cuStream);
 
@@ -249,9 +249,9 @@ Seedfinder<external_spacepoint_t, Acts::Cuda>::createSeedsForGroup(
           &cuStream);
       nTrplPerSpM_cpu.copyD2H(nTrplPerSpM_cuda.get(i_m), 1, i_m, &cuStream);
 
-      TripletsPerSpM_cpu.copyD2H(TripletsPerSpM_cuda.get(0, i_m),
-                                 nTrplPerSpMLimit, nTrplPerSpMLimit * i_m,
-                                 &cuStream);
+      TripletsPerSpM_cpu.copyFrom(TripletsPerSpM_cuda.get(0, i_m),
+                                  nTrplPerSpMLimit, nTrplPerSpMLimit * i_m,
+                                  cuStream);
     }
 
     if (i_m > 0) {
@@ -261,7 +261,7 @@ Seedfinder<external_spacepoint_t, Acts::Cuda>::createSeedsForGroup(
           seedsPerSpM;
 
       for (int i = 0; i < *nTrplPerSpM_cpu.get(i_m - 1); i++) {
-        auto& triplet = *TripletsPerSpM_cpu.get(i, i_m - 1);
+        auto& triplet = TripletsPerSpM_cpu.get(i, i_m - 1);
         int mIndex = *McompIndex_cpu.get(i_m - 1);
         int bIndex = triplet.bIndex;
         int tIndex = triplet.tIndex;
@@ -294,4 +294,6 @@ Seedfinder<external_spacepoint_t, Acts::Cuda>::createSeedsForGroup(
   }
   return outputVec;
 }
-}  // namespace Acts
+
+} // namespace Cuda
+} // namespace Acts

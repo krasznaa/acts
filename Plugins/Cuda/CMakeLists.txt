@@ -3,6 +3,7 @@ find_library(CUDART_LIBRARY cudart ${CMAKE_CUDA_IMPLICIT_LINK_DIRECTORIES})
 add_library(
   ActsCudaPlugin SHARED
   src/Seeding/Kernels.cu
+  src/Utilities/Arrays.cu
   )
 
 target_include_directories(

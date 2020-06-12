@@ -12,7 +12,7 @@
 #include <memory>
 #include "cuda.h"
 #include "cuda_runtime.h"
-#include "Acts/Plugins/Cuda/Utilities/CpuMatrix.hpp"
+#include "Acts/Plugins/Cuda/Utilities/HostMatrix.cuh"
 #include "CudaUtils.cu"
 
 namespace Acts{
@@ -36,10 +36,10 @@ public:
     copyH2D(mat, m_size, 0);
   }
   
-  CudaMatrix(size_t nRows, size_t nCols, CpuMatrix<var_t>* mat){
+  CudaMatrix(size_t nRows, size_t nCols, Cuda::HostMatrix<var_t>* mat){
     m_setSize(nRows,nCols);
     ACTS_CUDA_ERROR_CHECK( cudaMalloc((var_t**)&m_devPtr, m_nRows*m_nCols*sizeof(var_t)) );
-    copyH2D(mat->get(0,0), m_size, 0);
+    copyH2D(&(mat->get(0,0)), m_size, 0);
   }
 
   CudaMatrix(size_t nRows, size_t nCols, var_t* mat, size_t len, size_t offset){
@@ -48,10 +48,10 @@ public:
     copyH2D(mat, len, offset);
   }
   
-  CudaMatrix(size_t nRows, size_t nCols, CpuMatrix<var_t>* mat, size_t len, size_t offset){
+  CudaMatrix(size_t nRows, size_t nCols, Cuda::HostMatrix<var_t>* mat, size_t len, size_t offset){
     m_setSize(nRows,nCols);
     ACTS_CUDA_ERROR_CHECK( cudaMalloc((var_t**)&m_devPtr, m_nRows*m_nCols*sizeof(var_t)) );
-    copyH2D(mat->get(0,0),len,offset);
+    copyH2D(&(mat->get(0,0)),len,offset);
   }
   
   ~CudaMatrix(){
@@ -89,4 +89,3 @@ private:
 };
 
 }
-
