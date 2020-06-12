@@ -12,13 +12,9 @@
 #include <memory>
 #include "cuda.h"
 #include "cuda_runtime.h"
-#include "Acts/Plugins/Cuda/Utilities/CpuVector.hpp"
 #include "CudaUtils.cu"
 
 namespace Acts{
-
-template <typename var_t>
-class CpuVector;
   
 template<typename var_t>
 class CudaVector{

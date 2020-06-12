@@ -163,9 +163,12 @@ Seedfinder<external_spacepoint_t>::createSeedsForGroup(
   CpuScalar<int> nSpMcomp_cpu(&nSpMcomp_cuda);
   CpuScalar<int> nSpBcompPerSpMMax_cpu(&nSpBcompPerSpMMax_cuda);
   CpuScalar<int> nSpTcompPerSpMMax_cpu(&nSpTcompPerSpMMax_cuda);
-  CpuVector<int> nSpBcompPerSpM_cpu(nSpM, &nSpBcompPerSpM_cuda);
-  CpuVector<int> nSpTcompPerSpM_cpu(nSpM, &nSpTcompPerSpM_cuda);
-  CpuVector<int> McompIndex_cpu(nSpM, &McompIndex_cuda);
+  HostVector<int> nSpBcompPerSpM_cpu(nSpM);
+  nSpBcompPerSpM_cpu.copyFrom(nSpBcompPerSpM_cuda.get(), nSpM, 0);
+  HostVector<int> nSpTcompPerSpM_cpu(nSpM);
+  nSpTcompPerSpM_cpu.copyFrom(nSpTcompPerSpM_cuda.get(), nSpM, 0);
+  HostVector<int> McompIndex_cpu(nSpM);
+  McompIndex_cpu.copyFrom(McompIndex_cuda.get(), nSpM, 0);
 
   //--------------------------------------
   //  Algorithm 2. Transform coordinate
@@ -209,7 +212,7 @@ Seedfinder<external_spacepoint_t>::createSeedsForGroup(
   nTrplPerSpM_cuda.zeros();
   CudaMatrix<Triplet> TripletsPerSpM_cuda(nTrplPerSpMLimit,
                                           *nSpMcomp_cpu.get());
-  CpuVector<int> nTrplPerSpM_cpu(*nSpMcomp_cpu.get(), true);
+  HostVector<int> nTrplPerSpM_cpu(*nSpMcomp_cpu.get());
   nTrplPerSpM_cpu.zeros();
   HostMatrix<Triplet> TripletsPerSpM_cpu(nTrplPerSpMLimit, *nSpMcomp_cpu.get());
   cudaStream_t cuStream;
@@ -220,16 +223,16 @@ Seedfinder<external_spacepoint_t>::createSeedsForGroup(
 
     // Search Triplet
     if (i_m < *nSpMcomp_cpu.get()) {
-      int mIndex = *McompIndex_cpu.get(i_m);
-      int* nSpBcompPerSpM = nSpBcompPerSpM_cpu.get(mIndex);
-      int* nSpTcompPerSpM = nSpTcompPerSpM_cpu.get(mIndex);
+      int mIndex = McompIndex_cpu.get(i_m);
+      int* nSpBcompPerSpM = &(nSpBcompPerSpM_cpu.get(mIndex));
+      int* nSpTcompPerSpM = &(nSpTcompPerSpM_cpu.get(mIndex));
 
       dim3 TS_GridSize(*nSpBcompPerSpM, 1, 1);
       dim3 TS_BlockSize =
           dim3(fmin(m_config.maxBlockSize, *nSpTcompPerSpM), 1, 1);
 
       searchTriplet(
-          TS_GridSize, TS_BlockSize, nSpTcompPerSpM_cpu.get(mIndex),
+          TS_GridSize, TS_BlockSize, &(nSpTcompPerSpM_cpu.get(mIndex)),
           nSpTcompPerSpM_cuda.get(mIndex), nSpMcomp_cuda.get(),
           spMcompMat_cuda.get(i_m, 0), nSpBcompPerSpMMax_cuda.get(),
           BcompIndex_cuda.get(0, i_m), circBcompMatPerSpM_cuda.get(0, 6 * i_m),
@@ -247,7 +250,7 @@ Seedfinder<external_spacepoint_t>::createSeedsForGroup(
           // output
           nTrplPerSpM_cuda.get(i_m), TripletsPerSpM_cuda.get(0, i_m),
           &cuStream);
-      nTrplPerSpM_cpu.copyD2H(nTrplPerSpM_cuda.get(i_m), 1, i_m, &cuStream);
+      nTrplPerSpM_cpu.copyFrom(nTrplPerSpM_cuda.get(i_m), 1, i_m, cuStream);
 
       TripletsPerSpM_cpu.copyFrom(TripletsPerSpM_cuda.get(0, i_m),
                                   nTrplPerSpMLimit, nTrplPerSpMLimit * i_m,
@@ -260,9 +263,9 @@ Seedfinder<external_spacepoint_t>::createSeedsForGroup(
           float, std::unique_ptr<const InternalSeed<external_spacepoint_t>>>>
           seedsPerSpM;
 
-      for (int i = 0; i < *nTrplPerSpM_cpu.get(i_m - 1); i++) {
+      for (int i = 0; i < nTrplPerSpM_cpu.get(i_m - 1); i++) {
         auto& triplet = TripletsPerSpM_cpu.get(i, i_m - 1);
-        int mIndex = *McompIndex_cpu.get(i_m - 1);
+        int mIndex = McompIndex_cpu.get(i_m - 1);
         int bIndex = triplet.bIndex;
         int tIndex = triplet.tIndex;
 
