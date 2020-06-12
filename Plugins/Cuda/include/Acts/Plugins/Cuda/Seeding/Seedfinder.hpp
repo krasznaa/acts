@@ -8,21 +8,11 @@
 
 #pragma once
 
-#include "Acts/Plugins/Cuda/Cuda.hpp"
-#include "Acts/Plugins/Cuda/Seeding/Kernels.cuh"
+// Acts include(s).
 #include "Acts/Seeding/InternalSeed.hpp"
 #include "Acts/Seeding/InternalSpacePoint.hpp"
 #include "Acts/Seeding/SeedFilter.hpp"
 #include "Acts/Seeding/SeedfinderConfig.hpp"
-
-#include <array>
-#include <list>
-#include <map>
-#include <memory>
-#include <set>
-#include <string>
-#include <utility>
-#include <vector>
 
 namespace Acts {
 namespace Cuda {
@@ -64,4 +54,5 @@ class Seedfinder {
 } // namespace Cuda
 } // namespace Acts
 
+// Include the template implementation.
 #include "Acts/Plugins/Cuda/Seeding/Seedfinder.ipp"

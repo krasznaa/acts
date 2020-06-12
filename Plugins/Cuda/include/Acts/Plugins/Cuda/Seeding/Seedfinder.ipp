@@ -6,6 +6,10 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+// CUDA plugin include(s).
+#include "Acts/Plugins/Cuda/Cuda.hpp"
+#include "Acts/Plugins/Cuda/Seeding/Kernels.cuh"
+
 #include <algorithm>
 #include <cmath>
 #include <numeric>
@@ -18,6 +22,7 @@ template <typename external_spacepoint_t>
 Seedfinder<external_spacepoint_t>::Seedfinder(
     Acts::SeedfinderConfig<external_spacepoint_t> config)
     : m_config(std::move(config)) {
+
   // calculation of scattering using the highland formula
   // convert pT to p once theta angle is known
   m_config.highland = 13.6 * std::sqrt(m_config.radLengthPerSeed) *
@@ -44,25 +49,8 @@ Seedfinder<external_spacepoint_t>::createSeedsForGroup(
   std::vector<Seed<external_spacepoint_t>> outputVec;
 
   // Get SeedfinderConfig values
-  CudaScalar<float> deltaRMin_cuda(&m_config.deltaRMin);
-  CudaScalar<float> deltaRMax_cuda(&m_config.deltaRMax);
-  CudaScalar<float> cotThetaMax_cuda(&m_config.cotThetaMax);
-  CudaScalar<float> collisionRegionMin_cuda(&m_config.collisionRegionMin);
-  CudaScalar<float> collisionRegionMax_cuda(&m_config.collisionRegionMax);
-  CudaScalar<float> maxScatteringAngle2_cuda(&m_config.maxScatteringAngle2);
-  CudaScalar<float> sigmaScattering_cuda(&m_config.sigmaScattering);
-  CudaScalar<float> minHelixDiameter2_cuda(&m_config.minHelixDiameter2);
-  CudaScalar<float> pT2perRadius_cuda(&m_config.pT2perRadius);
-  CudaScalar<float> impactMax_cuda(&m_config.impactMax);
   const auto seedFilterConfig = m_config.seedFilter->getSeedFilterConfig();
-  CudaScalar<float> deltaInvHelixDiameter_cuda(
-      &seedFilterConfig.deltaInvHelixDiameter);
-  CudaScalar<float> impactWeightFactor_cuda(
-      &seedFilterConfig.impactWeightFactor);
-  CudaScalar<float> filterDeltaRMin_cuda(&seedFilterConfig.deltaRMin);
-  CudaScalar<float> compatSeedWeight_cuda(&seedFilterConfig.compatSeedWeight);
-  CudaScalar<size_t> compatSeedLimit_cuda(&seedFilterConfig.compatSeedLimit);
-  CpuScalar<size_t> compatSeedLimit_cpu(&compatSeedLimit_cuda);
+
   //---------------------------------
   // Algorithm 0. Matrix Flattening
   //---------------------------------
@@ -90,10 +78,6 @@ Seedfinder<external_spacepoint_t>::createSeedsForGroup(
     nSpT++;
     topSPvec.push_back(sp);
   }
-
-  CudaScalar<int> nSpM_cuda(&nSpM);
-  CudaScalar<int> nSpB_cuda(&nSpB);
-  CudaScalar<int> nSpT_cuda(&nSpT);
 
   if (nSpM == 0 || nSpB == 0 || nSpT == 0)
     return outputVec;
@@ -136,9 +120,9 @@ Seedfinder<external_spacepoint_t>::createSeedsForGroup(
   //  Algorithm 1. Doublet Search (DS)
   //------------------------------------
 
-  CudaScalar<int> nSpMcomp_cuda(new int(0));
-  CudaScalar<int> nSpBcompPerSpMMax_cuda(new int(0));
-  CudaScalar<int> nSpTcompPerSpMMax_cuda(new int(0));
+  ResultScalar<int> nSpMcomp_cuda;
+  ResultScalar<int> nSpBcompPerSpMMax_cuda;
+  ResultScalar<int> nSpTcompPerSpMMax_cuda;
   DeviceVector<int> nSpBcompPerSpM_cuda(nSpM);
   nSpBcompPerSpM_cuda.zeros();
   DeviceVector<int> nSpTcompPerSpM_cuda(nSpM);
@@ -152,20 +136,23 @@ Seedfinder<external_spacepoint_t>::createSeedsForGroup(
   dim3 DS_BlockSize = m_config.maxBlockSize;
   dim3 DS_GridSize(nSpM, 1, 1);
 
-  searchDoublet(DS_GridSize, DS_BlockSize, nSpM_cuda.get(), spMmat_cuda.getPtr(),
-                nSpB_cuda.get(), spBmat_cuda.getPtr(), nSpT_cuda.get(),
-                spTmat_cuda.getPtr(), deltaRMin_cuda.get(), deltaRMax_cuda.get(),
-                cotThetaMax_cuda.get(), collisionRegionMin_cuda.get(),
-                collisionRegionMax_cuda.get(), nSpMcomp_cuda.get(),
-                nSpBcompPerSpMMax_cuda.get(), nSpTcompPerSpMMax_cuda.get(),
+  searchDoublet(DS_GridSize, DS_BlockSize,
+                nSpM, spMmat_cuda.getPtr(),
+                nSpB, spBmat_cuda.getPtr(),
+                nSpT, spTmat_cuda.getPtr(),
+                m_config.deltaRMin, m_config.deltaRMax,
+                m_config.cotThetaMax, m_config.collisionRegionMin,
+                m_config.collisionRegionMax,
+                nSpMcomp_cuda.getPtr(),
+                nSpBcompPerSpMMax_cuda.getPtr(), nSpTcompPerSpMMax_cuda.getPtr(),
                 nSpBcompPerSpM_cuda.getPtr(), nSpTcompPerSpM_cuda.getPtr(),
                 McompIndex_cuda.getPtr(), BcompIndex_cuda.getPtr(),
                 tmpBcompIndex_cuda.getPtr(), TcompIndex_cuda.getPtr(),
                 tmpTcompIndex_cuda.getPtr());
 
-  CpuScalar<int> nSpMcomp_cpu(&nSpMcomp_cuda);
-  CpuScalar<int> nSpBcompPerSpMMax_cpu(&nSpBcompPerSpMMax_cuda);
-  CpuScalar<int> nSpTcompPerSpMMax_cpu(&nSpTcompPerSpMMax_cuda);
+  const int nSpMcomp_cpu = nSpMcomp_cuda;
+  const int nSpBcompPerSpMMax_cpu = nSpBcompPerSpMMax_cuda;
+  const int nSpTcompPerSpMMax_cpu = nSpTcompPerSpMMax_cuda;
   HostVector<int> nSpBcompPerSpM_cpu(nSpM);
   copyToHost(nSpBcompPerSpM_cpu, nSpBcompPerSpM_cuda);
   HostVector<int> nSpTcompPerSpM_cpu(nSpM);
@@ -177,24 +164,24 @@ Seedfinder<external_spacepoint_t>::createSeedsForGroup(
   //  Algorithm 2. Transform coordinate
   //--------------------------------------
 
-  DeviceMatrix<float> spMcompMat_cuda(*nSpMcomp_cpu.get(), 6);
-  DeviceMatrix<float> spBcompMatPerSpM_cuda(*nSpBcompPerSpMMax_cpu.get(),
-                                          (*nSpMcomp_cpu.get()) * 6);
-  DeviceMatrix<float> spTcompMatPerSpM_cuda(*nSpTcompPerSpMMax_cpu.get(),
-                                          (*nSpMcomp_cpu.get()) * 6);
-  DeviceMatrix<float> circBcompMatPerSpM_cuda(*nSpBcompPerSpMMax_cpu.get(),
-                                            (*nSpMcomp_cpu.get()) * 6);
-  DeviceMatrix<float> circTcompMatPerSpM_cuda(*nSpTcompPerSpMMax_cpu.get(),
-                                            (*nSpMcomp_cpu.get()) * 6);
+  DeviceMatrix<float> spMcompMat_cuda(nSpMcomp_cpu, 6);
+  DeviceMatrix<float> spBcompMatPerSpM_cuda(nSpBcompPerSpMMax_cpu,
+                                            nSpMcomp_cpu * 6);
+  DeviceMatrix<float> spTcompMatPerSpM_cuda(nSpTcompPerSpMMax_cpu,
+                                            nSpMcomp_cpu * 6);
+  DeviceMatrix<float> circBcompMatPerSpM_cuda(nSpBcompPerSpMMax_cpu,
+                                              nSpMcomp_cpu * 6);
+  DeviceMatrix<float> circTcompMatPerSpM_cuda(nSpTcompPerSpMMax_cpu,
+                                              nSpMcomp_cpu * 6);
 
-  dim3 TC_GridSize(*nSpMcomp_cpu.get(), 1, 1);
+  dim3 TC_GridSize(nSpMcomp_cpu, 1, 1);
   dim3 TC_BlockSize = m_config.maxBlockSize;
 
   transformCoordinate(
-      TC_GridSize, TC_BlockSize, nSpM_cuda.get(), spMmat_cuda.getPtr(),
-      McompIndex_cuda.getPtr(), nSpB_cuda.get(), spBmat_cuda.getPtr(),
-      nSpBcompPerSpMMax_cuda.get(), BcompIndex_cuda.getPtr(), nSpT_cuda.get(),
-      spTmat_cuda.getPtr(), nSpTcompPerSpMMax_cuda.get(), TcompIndex_cuda.getPtr(),
+      TC_GridSize, TC_BlockSize, nSpM, spMmat_cuda.getPtr(),
+      McompIndex_cuda.getPtr(), nSpB, spBmat_cuda.getPtr(),
+      nSpBcompPerSpMMax_cpu, BcompIndex_cuda.getPtr(), nSpT,
+      spTmat_cuda.getPtr(), nSpTcompPerSpMMax_cpu, TcompIndex_cuda.getPtr(),
       spMcompMat_cuda.getPtr(), spBcompMatPerSpM_cuda.getPtr(),
       circBcompMatPerSpM_cuda.getPtr(), spTcompMatPerSpM_cuda.getPtr(),
       circTcompMatPerSpM_cuda.getPtr());
@@ -204,55 +191,50 @@ Seedfinder<external_spacepoint_t>::createSeedsForGroup(
   //------------------------------------------------------
 
   const int nTrplPerSpMLimit =
-      m_config.nAvgTrplPerSpBLimit * (*nSpBcompPerSpMMax_cpu.get());
-  CudaScalar<int> nTrplPerSpMLimit_cuda(&nTrplPerSpMLimit);
+      m_config.nAvgTrplPerSpBLimit * nSpBcompPerSpMMax_cpu;
 
-  CudaScalar<int> nTrplPerSpBLimit_cuda(&m_config.nTrplPerSpBLimit);
-  CpuScalar<int> nTrplPerSpBLimit_cpu(
-      &nTrplPerSpBLimit_cuda);  // need to be USM
-
-  DeviceVector<int> nTrplPerSpM_cuda(*nSpMcomp_cpu.get());
+  DeviceVector<int> nTrplPerSpM_cuda(nSpMcomp_cpu);
   nTrplPerSpM_cuda.zeros();
   DeviceMatrix<Triplet> TripletsPerSpM_cuda(nTrplPerSpMLimit,
-                                          *nSpMcomp_cpu.get());
-  HostVector<int> nTrplPerSpM_cpu(*nSpMcomp_cpu.get());
+                                            nSpMcomp_cpu);
+  HostVector<int> nTrplPerSpM_cpu(nSpMcomp_cpu);
   nTrplPerSpM_cpu.zeros();
-  HostMatrix<Triplet> TripletsPerSpM_cpu(nTrplPerSpMLimit, *nSpMcomp_cpu.get());
+  HostMatrix<Triplet> TripletsPerSpM_cpu(nTrplPerSpMLimit, nSpMcomp_cpu);
   cudaStream_t cuStream;
   cudaStreamCreate(&cuStream);
 
-  for (int i_m = 0; i_m <= *nSpMcomp_cpu.get(); i_m++) {
+  for (int i_m = 0; i_m <= nSpMcomp_cpu; i_m++) {
     cudaStreamSynchronize(cuStream);
 
     // Search Triplet
-    if (i_m < *nSpMcomp_cpu.get()) {
-      int mIndex = McompIndex_cpu.get(i_m);
-      int* nSpBcompPerSpM = nSpBcompPerSpM_cpu.getPtr(mIndex);
-      int* nSpTcompPerSpM = nSpTcompPerSpM_cpu.getPtr(mIndex);
+    if (i_m < nSpMcomp_cpu) {
+      const int mIndex = McompIndex_cpu.get(i_m);
+      const int nSpBcompPerSpM = nSpBcompPerSpM_cpu.get(mIndex);
+      const int nSpTcompPerSpM = nSpTcompPerSpM_cpu.get(mIndex);
 
-      dim3 TS_GridSize(*nSpBcompPerSpM, 1, 1);
+      dim3 TS_GridSize(nSpBcompPerSpM, 1, 1);
       dim3 TS_BlockSize =
-          dim3(fmin(m_config.maxBlockSize, *nSpTcompPerSpM), 1, 1);
+          dim3(fmin(m_config.maxBlockSize, nSpTcompPerSpM), 1, 1);
 
       searchTriplet(
-          TS_GridSize, TS_BlockSize, nSpTcompPerSpM_cpu.getPtr(mIndex),
-          nSpTcompPerSpM_cuda.getPtr(mIndex), nSpMcomp_cuda.get(),
-          spMcompMat_cuda.getPtr(i_m, 0), nSpBcompPerSpMMax_cuda.get(),
+          TS_GridSize, TS_BlockSize,
+          nSpTcompPerSpM_cuda.getPtr(mIndex), nSpMcomp_cpu,
+          spMcompMat_cuda.getPtr(i_m, 0), nSpBcompPerSpMMax_cpu,
           BcompIndex_cuda.getPtr(0, i_m), circBcompMatPerSpM_cuda.getPtr(0, 6 * i_m),
-          nSpTcompPerSpMMax_cuda.get(), TcompIndex_cuda.getPtr(0, i_m),
+          nSpTcompPerSpMMax_cpu, TcompIndex_cuda.getPtr(0, i_m),
           spTcompMatPerSpM_cuda.getPtr(0, 6 * i_m),
           circTcompMatPerSpM_cuda.getPtr(0, 6 * i_m),
           // Seed finder config
-          maxScatteringAngle2_cuda.get(), sigmaScattering_cuda.get(),
-          minHelixDiameter2_cuda.get(), pT2perRadius_cuda.get(),
-          impactMax_cuda.get(), nTrplPerSpMLimit_cuda.get(),
-          nTrplPerSpBLimit_cpu.get(), nTrplPerSpBLimit_cuda.get(),
-          deltaInvHelixDiameter_cuda.get(), impactWeightFactor_cuda.get(),
-          filterDeltaRMin_cuda.get(), compatSeedWeight_cuda.get(),
-          compatSeedLimit_cpu.get(), compatSeedLimit_cuda.get(),
+          m_config.maxScatteringAngle2, m_config.sigmaScattering,
+          m_config.minHelixDiameter2, m_config.pT2perRadius,
+          m_config.impactMax, nTrplPerSpMLimit,
+          m_config.nTrplPerSpBLimit,
+          seedFilterConfig.deltaInvHelixDiameter, seedFilterConfig.impactWeightFactor,
+          seedFilterConfig.deltaRMin, seedFilterConfig.compatSeedWeight,
+          seedFilterConfig.compatSeedLimit,
           // output
           nTrplPerSpM_cuda.getPtr(i_m), TripletsPerSpM_cuda.getPtr(0, i_m),
-          &cuStream);
+          cuStream);
       nTrplPerSpM_cpu.copyFrom(nTrplPerSpM_cuda.getPtr(i_m), 1, i_m, cuStream);
 
       TripletsPerSpM_cpu.copyFrom(TripletsPerSpM_cuda.getPtr(0, i_m),

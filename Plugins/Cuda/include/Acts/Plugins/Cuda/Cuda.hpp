@@ -9,10 +9,9 @@
 #pragma once
 
 #include "Acts/Plugins/Cuda/Utilities/HostMatrix.cuh"
-#include "Acts/Plugins/Cuda/Utilities/CpuScalar.hpp"
 #include "Acts/Plugins/Cuda/Utilities/HostVector.cuh"
 #include "Acts/Plugins/Cuda/Utilities/DeviceMatrix.cuh"
-#include "Acts/Plugins/Cuda/Utilities/CudaScalar.cu"
-#include "Acts/Plugins/Cuda/Utilities/CudaUtils.cu"
 #include "Acts/Plugins/Cuda/Utilities/DeviceVector.cuh"
+#include "Acts/Plugins/Cuda/Utilities/ResultScalar.cuh"
+#include "Acts/Plugins/Cuda/Utilities/CudaUtils.cu"
 #include "Acts/Plugins/Cuda/Utilities/CopyFunctions.cuh"
