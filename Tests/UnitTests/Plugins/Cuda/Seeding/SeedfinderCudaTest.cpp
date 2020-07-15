@@ -118,32 +118,33 @@ int main(int argc, char** argv) {
         std::cerr << "Usage: " << argv[0] << " [-hq] [-f FILENAME]\n";
         if (help) {
           std::cout << "      -h : this help" << std::endl;
-          std::cout << "      -a ALL   : analyze all groups. Default is \""
-                    << allgroup << "\"" << std::endl;
+          std::cout << "      -a ALL   : analyze all groups. (default: \""
+                    << allgroup << "\")" << std::endl;
           std::cout
-              << "      -f FILE  : read spacepoints from FILE. Default is \""
-              << file << "\"" << std::endl;
+              << "      -f FILE  : read spacepoints from FILE. (default: \""
+              << file << "\")" << std::endl;
           std::cout << "      -n NUM   : Number of groups to iterate in seed "
-                       "finding. Default is "
-                    << nGroupToIterate << std::endl;
+                       "finding. (default: "
+                    << nGroupToIterate << ")" << std::endl;
           std::cout << "      -s SKIP  : Number of groups to skip in seed "
-                       "finding. Default is "
-                    << skip << std::endl;
-          std::cout << "      -d DEVID : NVIDIA GPU device ID. Default is "
-                    << deviceID << std::endl;
+                       "finding. (default: "
+                    << skip << ")" << std::endl;
+          std::cout << "      -d DEVID : NVIDIA GPU device ID. (default: "
+                    << deviceID << ")" << std::endl;
           std::cout << "      -l : A limit on the average number of triplets "
                        "per bottom spacepoint: this is used for determining "
-                       "matrix size for triplets per middle space point"
-                    << nAvgTrplPerSpBLimit << std::endl;
+                       "matrix size for triplets per middle space point "
+                       "(default: "
+                    << nAvgTrplPerSpBLimit << ")" << std::endl;
           std::cout << "      -m : A limit on the number of triplets per "
                        "bottom spacepoint: users do not have to touch this for "
-                       "# spacepoints < ~200k"
-                    << nTrplPerSpBLimit << std::endl;
+                       "# spacepoints < ~200k (default: "
+                    << nTrplPerSpBLimit << ")" << std::endl;
           std::cout << "      -q : don't print out all found seeds"
                     << std::endl;
         }
 
-        exit(EXIT_FAILURE);
+        return EXIT_FAILURE;
     }
   }
 
@@ -153,7 +154,7 @@ int main(int argc, char** argv) {
   std::ifstream f(file);
   if (!f.good()) {
     std::cerr << "input file \"" << file << "\" does not exist\n";
-    exit(EXIT_FAILURE);
+    return EXIT_FAILURE;
   }
 
   std::vector<const SpacePoint*> spVec = readFile(file);
@@ -401,5 +402,5 @@ int main(int argc, char** argv) {
   std::cout << std::endl;
   std::cout << std::endl;
 
-  return 0;
+  return EXIT_SUCCESS;
 }
