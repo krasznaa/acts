@@ -25,8 +25,8 @@ BOOST_AUTO_TEST_CASE(HostMemory) {
 
   // Create and test a 1-dimensional array.
   Acts::Cuda::HostMemory<1, int> array({SIZE_X});
-  BOOST_TEST_REQUIRE(array.sizeInDim<0>() == SIZE_X);
-  BOOST_TEST_REQUIRE(array.size() == SIZE_X);
+  BOOST_TEST_REQUIRE(array.size().at(0) == SIZE_X);
+  BOOST_TEST_REQUIRE(array.totalSize() == SIZE_X);
   for(std::size_t i = 0; i < SIZE_X; ++i) {
     array.set({i}, 0);
   }
@@ -38,9 +38,9 @@ BOOST_AUTO_TEST_CASE(HostMemory) {
 
   // Create and test a 2-dimensional matrix.
   Acts::Cuda::HostMemory<2, int> matrix2D({SIZE_X, SIZE_Y});
-  BOOST_TEST_REQUIRE(matrix2D.sizeInDim<0>() == SIZE_X);
-  BOOST_TEST_REQUIRE(matrix2D.sizeInDim<1>() == SIZE_Y);
-  BOOST_TEST_REQUIRE(matrix2D.size() == SIZE_X * SIZE_Y);
+  BOOST_TEST_REQUIRE(matrix2D.size().at(0) == SIZE_X);
+  BOOST_TEST_REQUIRE(matrix2D.size().at(1) == SIZE_Y);
+  BOOST_TEST_REQUIRE(matrix2D.totalSize() == SIZE_X * SIZE_Y);
   for(std::size_t i = 0; i < SIZE_X; ++i) {
     for(std::size_t j = 0; j < SIZE_Y; ++j) {
       matrix2D.set({i, j}, 0);
@@ -56,10 +56,10 @@ BOOST_AUTO_TEST_CASE(HostMemory) {
 
   // Create and test a 3-dimensional matrix.
   Acts::Cuda::HostMemory<3, int> matrix3D({SIZE_X, SIZE_Y, SIZE_Z});
-  BOOST_TEST_REQUIRE(matrix3D.sizeInDim<0>() == SIZE_X);
-  BOOST_TEST_REQUIRE(matrix3D.sizeInDim<1>() == SIZE_Y);
-  BOOST_TEST_REQUIRE(matrix3D.sizeInDim<2>() == SIZE_Z);
-  BOOST_TEST_REQUIRE(matrix3D.size() == SIZE_X * SIZE_Y * SIZE_Z);
+  BOOST_TEST_REQUIRE(matrix3D.size().at(0) == SIZE_X);
+  BOOST_TEST_REQUIRE(matrix3D.size().at(1) == SIZE_Y);
+  BOOST_TEST_REQUIRE(matrix3D.size().at(2) == SIZE_Z);
+  BOOST_TEST_REQUIRE(matrix3D.totalSize() == SIZE_X * SIZE_Y * SIZE_Z);
   for(std::size_t i = 0; i < SIZE_X; ++i) {
     for(std::size_t j = 0; j < SIZE_Y; ++j) {
       for(std::size_t k = 0; k < SIZE_Z; ++k) {

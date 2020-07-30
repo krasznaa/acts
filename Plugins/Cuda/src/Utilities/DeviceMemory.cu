@@ -48,7 +48,7 @@ DeviceMemory<DIM,T>::DeviceMemory(
 }
 
 template<std::size_t DIM, typename T>
-std::size_t DeviceMemory<DIM,T>::size() const {
+std::size_t DeviceMemory<DIM,T>::totalSize() const {
   return ::ArraySize<DIMENSIONS>::size(m_size);
 }
 

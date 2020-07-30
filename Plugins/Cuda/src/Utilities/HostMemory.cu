@@ -82,7 +82,7 @@ HostMemory<DIM,T>::HostMemory(
 }
 
 template<std::size_t DIM, typename T>
-std::size_t HostMemory<DIM,T>::size() const {
+std::size_t HostMemory<DIM,T>::totalSize() const {
   return ::ArraySize<DIMENSIONS>::size(m_size);
 }
 

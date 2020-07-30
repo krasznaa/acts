@@ -39,14 +39,10 @@ class DeviceMemory {
   /// Create the array/matrix in device memory
   DeviceMemory(const std::array<std::size_t, DIMENSIONS>& size);
 
-  /// Get the size of the array/matrix along a certain dimension
-  template<std::size_t SIZE_DIM>
-  std::size_t sizeInDim() const {
-    static_assert(SIZE_DIM < DIMENSIONS);
-    return std::get<SIZE_DIM>(m_size);
-  }
+  /// Get the array describing the size of the memory block
+  const std::array<std::size_t, DIMENSIONS>& size() const { return m_size; }
   /// Get the total size of the underlying memory block
-  std::size_t size() const;
+  std::size_t totalSize() const;
 
   /// Get a (non-constant) pointer to the underlying memory block
   pointer data();
