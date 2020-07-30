@@ -12,18 +12,22 @@ add_library(
   include/Acts/Plugins/Cuda/Utilities/CopyFunctions.hpp
   include/Acts/Plugins/Cuda/Utilities/CopyFunctions.ipp
   include/Acts/Plugins/Cuda/Utilities/DeviceMatrix.hpp
+  include/Acts/Plugins/Cuda/Utilities/DeviceMemory.hpp
   include/Acts/Plugins/Cuda/Utilities/DeviceVector.hpp
   include/Acts/Plugins/Cuda/Utilities/ErrorCheck.cuh
   include/Acts/Plugins/Cuda/Utilities/HostMatrix.hpp
+  include/Acts/Plugins/Cuda/Utilities/HostMemory.hpp
   include/Acts/Plugins/Cuda/Utilities/HostVector.hpp
   include/Acts/Plugins/Cuda/Utilities/ResultScalar.hpp
   include/Acts/Plugins/Cuda/Utilities/StreamWrapper.hpp
   src/Seeding/Kernels.cu
   src/Utilities/Arrays.cu
   src/Utilities/DeviceMatrix.cu
+  src/Utilities/DeviceMemory.cu
   src/Utilities/DeviceVector.cu
   src/Utilities/ErrorCheck.cu
   src/Utilities/HostMatrix.cu
+  src/Utilities/HostMemory.cu
   src/Utilities/HostVector.cu
   src/Utilities/ResultScalar.cu
   src/Utilities/StreamHandlers.cuh
