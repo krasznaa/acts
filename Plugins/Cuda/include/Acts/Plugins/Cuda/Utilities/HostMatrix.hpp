@@ -10,65 +10,59 @@
 
 // CUDA plugin include(s).
 #include "Acts/Plugins/Cuda/Utilities/Arrays.hpp"
-#include "Acts/Plugins/Cuda/Utilities/StreamWrapper.hpp"
+
+// System include(s).
+#include <array>
+#include <cstddef>
 
 namespace Acts {
 namespace Cuda {
 
-/// Helper type for holding a matrix as a variable array in pinned host memory
-template <typename T>
+/// Helper type for handling 1, 2 and 3-dimensional matrices on the host
+template<std::size_t DIM, typename T>
 class HostMatrix {
+
+  /// Make sure that we have at least a single dimension for the matrix
+  static_assert(DIM > 0);
+
  public:
-  /// The variable type being used
-  using Variable_t = T;
-  /// Non-constant reference to an element of the matrix
-  using element_reference = Variable_t&;
-  /// Constant reference to an element of the matrix
-  using element_const_reference = const Variable_t&;
-  /// Non-constant pointer to (some part of) the matrix
-  using pointer = Variable_t*;
-  /// Constant pointer to (some part of) the matrix
-  using const_pointer = const Variable_t*;
+  /// The dimensionality of this object
+  static constexpr std::size_t DIMENSIONS = DIM;
+  /// The type of the underlying primitive type
+  using Type = T;
+  /// Non-constant pointer to the memory block
+  using pointer = Type*;
+  /// Constant pointer to the memory block
+  using const_pointer = const Type*;
 
-  /// Create a matrix in host memory.
-  HostMatrix(std::size_t nRows, std::size_t nCols);
+  /// Create the array/matrix in device memory
+  HostMatrix(const std::array<std::size_t, DIMENSIONS>& size);
 
-  /// Get the number of rows in the matrix
-  std::size_t nRows() const { return m_nRows; }
-  /// Get the number of columns in the matrix
-  std::size_t nCols() const { return m_nCols; }
-  /// Get the total size of the matrix
-  std::size_t size() const { return m_nRows * m_nCols; }
+  /// Get the array describing the size of the memory block
+  const std::array<std::size_t, DIMENSIONS>& size() const { return m_size; }
+  /// Get the total size of the underlying memory block
+  std::size_t totalSize() const;
 
-  /// Get a specific element of the matrix. (non-const)
-  element_reference get(std::size_t row = 0, std::size_t col = 0);
-  /// Get a specific element of the matrix. (const)
-  element_const_reference get(std::size_t row = 0, std::size_t col = 0) const;
+  /// Get a (non-constant) pointer to the underlying memory block
+  pointer data();
+  /// Get a (constant) pointer to the underlying memory block
+  const_pointer data() const;
 
-  /// Get a "pointer into the matrix" (non-const)
-  pointer getPtr(std::size_t row = 0, std::size_t col = 0);
-  /// Get a "pointer into the matrix" (const)
-  const_pointer getPtr(std::size_t row = 0, std::size_t col = 0) const;
+  /// Get one element of the array/matrix
+  Type get(const std::array<std::size_t, DIMENSIONS>& i) const;
+  /// Set one element of the array/matrix
+  void set(const std::array<std::size_t, DIMENSIONS>& i, Type value);
 
-  /// Set a specific element of the matrix
-  void set(std::size_t row, std::size_t col, Variable_t val);
-
-  /// Copy memory from a/the device.
-  void copyFrom(const_pointer devPtr, std::size_t len, std::size_t offset);
-  /// Copy memory from a/the device asynchronously.
-  void copyFrom(const_pointer devPtr, std::size_t len, std::size_t offset,
-                const StreamWrapper& streamWrapper);
-
-  /// Reset the matrix to all zeros
-  void zeros();
+  /// Copy the managed memory to the/a device
+  void copyTo(device_array<Type>& dev) const;
+  /// Copy the managed memory from the/a device
+  void copyFrom(const device_array<Type>& dev);
 
  private:
-  /// Rows in the matrix
-  std::size_t m_nRows;
-  /// Culumns in the matrix
-  std::size_t m_nCols;
-  /// Smart pointer managing the matrix's memory
-  host_array<Variable_t> m_array;
+  /// The size of the array/matrix in memory
+  std::array<std::size_t, DIMENSIONS> m_size;
+  /// Smart pointer managing the device memory
+  host_array<Type> m_array;
 
 };  // class HostMatrix
 

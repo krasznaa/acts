@@ -6,123 +6,126 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-// CUDA plugin include(s).
-#include "Acts/Plugins/Cuda/Seeding/Types.hpp"
-#include "Acts/Plugins/Cuda/Utilities/ErrorCheck.cuh"
+// CUDA Plugin include(s).
 #include "Acts/Plugins/Cuda/Utilities/HostMatrix.hpp"
-#include "StreamHandlers.cuh"
+#include "Acts/Plugins/Cuda/Utilities/ErrorCheck.cuh"
 
 // CUDA include(s).
 #include <cuda_runtime.h>
 
 // System include(s).
 #include <cassert>
-#include <cstring>
+
+namespace {
+
+template<std::size_t DIM, std::size_t INDEX>
+struct ArraySizeImpl {
+  static_assert(INDEX < DIM);
+  static std::size_t size(const std::array<std::size_t, DIM>& s) {
+    static constexpr std::size_t LOWER_INDEX = INDEX - 1;
+    return ArraySizeImpl<DIM, LOWER_INDEX>::size(s) * std::get<INDEX>(s);
+  }
+};  // struct ArraySizeImpl
+
+template<std::size_t DIM>
+struct ArraySizeImpl<DIM, 0> {
+  static std::size_t size(const std::array<std::size_t, DIM>& s) {
+    return std::get<0>(s);
+  }
+};  // struct ArraySizeImpl
+
+template<std::size_t DIM>
+struct ArraySize {
+  static std::size_t size(const std::array<std::size_t, DIM>& s) {
+    static constexpr std::size_t START_INDEX = DIM - 1;
+    return ArraySizeImpl<DIM, START_INDEX>::size(s);
+  }
+};  // struct ArraySize
+
+template<std::size_t DIM, std::size_t INDEX>
+struct ElementPositionImpl {
+  static_assert(INDEX < DIM);
+  static std::size_t get(const std::array<std::size_t, DIM>& s,
+                         const std::array<std::size_t, DIM>& i) {
+    static constexpr std::size_t LOWER_INDEX = INDEX - 1;
+    assert(std::get<INDEX>(i) < std::get<INDEX>(s));
+    return std::get<INDEX>(i) * ArraySizeImpl<DIM, LOWER_INDEX>::size(s) +
+        ElementPositionImpl<DIM, LOWER_INDEX>::get(s, i);
+  }
+};  // struct ElementPositionImpl
+
+template<std::size_t DIM>
+struct ElementPositionImpl<DIM, 0> {
+  static std::size_t get(const std::array<std::size_t, DIM>& s,
+                         const std::array<std::size_t, DIM>& i) {
+    assert(std::get<0>(i) < std::get<0>(s));
+    return std::get<0>(i);
+  }
+};  // struct ElementPositionImpl
+
+template<std::size_t DIM>
+struct ElementPosition {
+  static std::size_t get(const std::array<std::size_t, DIM>& s,
+                         const std::array<std::size_t, DIM>& i) {
+    static constexpr std::size_t START_INDEX = DIM - 1;
+    return ElementPositionImpl<DIM, START_INDEX>::get(s, i);
+  }
+};  // struct ElementPosition
+
+}  // private namespace
 
 namespace Acts {
 namespace Cuda {
 
-template <typename T>
-HostMatrix<T>::HostMatrix(std::size_t nRows, std::size_t nCols)
-    : m_nRows(nRows),
-      m_nCols(nCols),
-      m_array(make_host_array<T>(nRows * nCols)) {}
+template<std::size_t DIM, typename T>
+HostMatrix<DIM,T>::HostMatrix(
+    const std::array<std::size_t, DIMENSIONS>& size)
+: m_size(size),
+  m_array(make_host_array<Type>(::ArraySize<DIMENSIONS>::size(size))) {
 
-template <typename T>
-typename HostMatrix<T>::element_reference HostMatrix<T>::get(std::size_t row,
-                                                             std::size_t col) {
-  // Some security check(s).
-  assert(row < m_nRows);
-  assert(col < m_nCols);
-
-  // Return the requested element.
-  return m_array.get()[row + col * m_nRows];
 }
 
-template <typename T>
-typename HostMatrix<T>::element_const_reference HostMatrix<T>::get(
-    std::size_t row, std::size_t col) const {
-  // Some security check(s).
-  assert(row < m_nRows);
-  assert(col < m_nCols);
-
-  // Return the requested element.
-  return m_array.get()[row + col * m_nRows];
+template<std::size_t DIM, typename T>
+std::size_t HostMatrix<DIM,T>::totalSize() const {
+  return ::ArraySize<DIMENSIONS>::size(m_size);
 }
 
-template <typename T>
-typename HostMatrix<T>::pointer HostMatrix<T>::getPtr(std::size_t row,
-                                                      std::size_t col) {
-  // If the matrix is empty, just return a null pointer.
-  if ((m_nRows == 0) || (m_nCols == 0)) {
-    return nullptr;
-  }
-
-  // Some security check(s).
-  assert(row < m_nRows);
-  assert(col < m_nCols);
-
-  // Return the requested element.
-  return m_array.get() + row + col * m_nRows;
+template<std::size_t DIM, typename T>
+typename HostMatrix<DIM,T>::pointer HostMatrix<DIM,T>::data() {
+  return m_array.get();
 }
 
-template <typename T>
-typename HostMatrix<T>::const_pointer HostMatrix<T>::getPtr(
-    std::size_t row, std::size_t col) const {
-  // If the matrix is empty, just return a null pointer.
-  if ((m_nRows == 0) || (m_nCols == 0)) {
-    return nullptr;
-  }
-
-  // Some security check(s).
-  assert(row < m_nRows);
-  assert(col < m_nCols);
-
-  // Return the requested element.
-  return m_array.get() + row + col * m_nRows;
+template<std::size_t DIM, typename T>
+typename HostMatrix<DIM,T>::const_pointer HostMatrix<DIM,T>::data() const {
+  return m_array.get();
 }
 
-template <typename T>
-void HostMatrix<T>::set(std::size_t row, std::size_t col, Variable_t val) {
-  // Some security check(s).
-  assert(row < m_nRows);
-  assert(col < m_nCols);
+template<std::size_t DIM, typename T>
+typename HostMatrix<DIM,T>::Type HostMatrix<DIM,T>::get(
+    const std::array<std::size_t, DIMENSIONS>& i) const {
+  return m_array.get()[::ElementPosition<DIMENSIONS>::get(m_size, i)];
+}
 
-  // Set the requested element.
-  m_array.get()[row + col * m_nRows] = val;
+template<std::size_t DIM, typename T>
+void HostMatrix<DIM,T>::set(const std::array<std::size_t, DIMENSIONS>& i,
+                              Type value) {
+  m_array.get()[::ElementPosition<DIMENSIONS>::get(m_size, i)] = value;
   return;
 }
 
-template <typename T>
-void HostMatrix<T>::copyFrom(const_pointer devPtr, std::size_t len,
-                             std::size_t offset) {
-  // Some security check(s).
-  assert(offset + len <= m_nRows * m_nCols);
+template<std::size_t DIM, typename T>
+void HostMatrix<DIM,T>::copyTo(device_array<Type>& dev) const {
+  ACTS_CUDA_ERROR_CHECK(cudaMemcpy(dev.get(), m_array.get(),
+                                   totalSize() * sizeof(Type),
+                                   cudaMemcpyHostToDevice));
+  return;
+}
 
-  // Do the copy.
-  ACTS_CUDA_ERROR_CHECK(cudaMemcpy(m_array.get() + offset, devPtr,
-                                   len * sizeof(Variable_t),
+template<std::size_t DIM, typename T>
+void HostMatrix<DIM,T>::copyFrom(const device_array<Type>& dev) {
+  ACTS_CUDA_ERROR_CHECK(cudaMemcpy(m_array.get(), dev.get(),
+                                   totalSize() * sizeof(Type),
                                    cudaMemcpyDeviceToHost));
-  return;
-}
-
-template <typename T>
-void HostMatrix<T>::copyFrom(const_pointer devPtr, std::size_t len,
-                             std::size_t offset,
-                             const StreamWrapper& streamWrapper) {
-  // Some security check(s).
-  assert(offset + len <= m_nRows * m_nCols);
-
-  // Do the copy.
-  ACTS_CUDA_ERROR_CHECK(
-      cudaMemcpyAsync(m_array.get() + offset, devPtr, len * sizeof(Variable_t),
-                      cudaMemcpyDeviceToHost, getStreamFrom(streamWrapper)));
-  return;
-}
-
-template <typename T>
-void HostMatrix<T>::zeros() {
-  memset(m_array.get(), 0, m_nRows * m_nCols * sizeof(Variable_t));
   return;
 }
 
@@ -130,25 +133,24 @@ void HostMatrix<T>::zeros() {
 }  // namespace Acts
 
 /// Helper macro for instantiating the template code for a given type
-#define INST_HMATRIX_FOR_TYPE(TYPE) template class Acts::Cuda::HostMatrix<TYPE>
+#define INST_HM_FOR_TYPE(TYPE) \
+  template class Acts::Cuda::HostMatrix<1, TYPE>; \
+  template class Acts::Cuda::HostMatrix<2, TYPE>; \
+  template class Acts::Cuda::HostMatrix<3, TYPE>
 
 // Instantiate the templated functions for all primitive types.
-INST_HMATRIX_FOR_TYPE(void*);
-INST_HMATRIX_FOR_TYPE(char);
-INST_HMATRIX_FOR_TYPE(unsigned char);
-INST_HMATRIX_FOR_TYPE(short);
-INST_HMATRIX_FOR_TYPE(unsigned short);
-INST_HMATRIX_FOR_TYPE(int);
-INST_HMATRIX_FOR_TYPE(unsigned int);
-INST_HMATRIX_FOR_TYPE(long);
-INST_HMATRIX_FOR_TYPE(unsigned long);
-INST_HMATRIX_FOR_TYPE(long long);
-INST_HMATRIX_FOR_TYPE(unsigned long long);
-INST_HMATRIX_FOR_TYPE(float);
-INST_HMATRIX_FOR_TYPE(double);
-
-// Instantiate them for any necessary custom type(s) as well.
-INST_HMATRIX_FOR_TYPE(Acts::Cuda::details::Triplet);
+INST_HM_FOR_TYPE(char);
+INST_HM_FOR_TYPE(unsigned char);
+INST_HM_FOR_TYPE(short);
+INST_HM_FOR_TYPE(unsigned short);
+INST_HM_FOR_TYPE(int);
+INST_HM_FOR_TYPE(unsigned int);
+INST_HM_FOR_TYPE(long);
+INST_HM_FOR_TYPE(unsigned long);
+INST_HM_FOR_TYPE(long long);
+INST_HM_FOR_TYPE(unsigned long long);
+INST_HM_FOR_TYPE(float);
+INST_HM_FOR_TYPE(double);
 
 // Clean up.
-#undef INST_HMATRIX_FOR_TYPE
+#undef INST_HM_FOR_TYPE

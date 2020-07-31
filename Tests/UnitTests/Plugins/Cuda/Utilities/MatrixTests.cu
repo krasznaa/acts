@@ -7,13 +7,16 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 // CUDA plugin include(s).
-#include "Acts/Plugins/Cuda/Utilities/CopyFunctions.hpp"
-#include "Acts/Plugins/Cuda/Utilities/DeviceMatrix.hpp"
+#include "Acts/Plugins/Cuda/Utilities/Arrays.hpp"
+#include "Acts/Plugins/Cuda/Utilities/DeviceMatrix.cuh"
 #include "Acts/Plugins/Cuda/Utilities/ErrorCheck.cuh"
 #include "Acts/Plugins/Cuda/Utilities/HostMatrix.hpp"
 
 // Boost include(s).
 #include <boost/test/unit_test.hpp>
+
+// CUDA include(s).
+#include <cuda_runtime.h>
 
 // System include(s).
 #include <cmath>
@@ -22,56 +25,190 @@ namespace Acts {
 namespace Cuda {
 namespace Test {
 
-/// Simple kernel performing a multiplication.
-__global__ void matrixTransform(const int size, const float* input,
-                                float* output) {
+/// A 32-bit representation of Pi, for better numerical comparisons.
+static constexpr float PI = M_PI;
+
+/// Simple kernels performing matrix multiplication.
+/// @{
+__global__ void matrixMultiply(unsigned int x_size, float* array,
+                               float multiplier) {
   // Get the index to work on.
-  const int i = blockIdx.x * blockDim.x + threadIdx.x;
-  if (i >= size) {
+  unsigned int index[] = {blockIdx.x * blockDim.x + threadIdx.x};
+  if (index[0] >= x_size) {
     return;
   }
 
-  // Perform the transformation.
-  output[i] = input[i] * 2.0f;
+  // Wrap a helper object around the array.
+  const unsigned int size[] = {x_size};
+  DeviceMatrix<1, float> matrix(size, array);
+
+  // Perform the multiplication.
+  matrix.set(index, matrix.get(index) * multiplier);
   return;
 }
 
-BOOST_AUTO_TEST_SUITE(Utilities)
-BOOST_AUTO_TEST_CASE(MatrixCopy) {
-  // The matrix size to use in the test.
-  static constexpr int MATRIX_SIZE = 1000;
+__global__ void matrixMultiply(unsigned int x_size, unsigned int y_size,
+                               float* array, float multiplier) {
+  // Get the index to work on.
+  unsigned int index[] = {blockIdx.x * blockDim.x + threadIdx.x,
+                          blockIdx.y * blockDim.y + threadIdx.y};
+  if ((index[0] >= x_size) || (index[1] >= y_size)) {
+    return;
+  }
 
-  // Create an input matrix.
-  HostMatrix<float> inputHost(MATRIX_SIZE, MATRIX_SIZE);
-  BOOST_TEST_REQUIRE(inputHost.size() == MATRIX_SIZE * MATRIX_SIZE);
-  for (int i = 0; i < MATRIX_SIZE; ++i) {
-    for (int j = 0; j < MATRIX_SIZE; ++j) {
-      inputHost.set(i, j, M_PI);
+  // Wrap a helper object around the array.
+  const unsigned int size[] = {x_size, y_size};
+  DeviceMatrix<2, float> matrix(size, array);
+
+  // Perform the multiplication.
+  matrix.set(index, matrix.get(index) * multiplier);
+  return;
+}
+
+__global__ void matrixMultiply(unsigned int x_size, unsigned int y_size,
+                               unsigned int z_size, float* array,
+                               float multiplier) {
+  // Get the index to work on.
+  unsigned int index[] = {blockIdx.x * blockDim.x + threadIdx.x,
+                          blockIdx.y * blockDim.y + threadIdx.y,
+                          blockIdx.z * blockDim.z + threadIdx.z};
+  if ((index[0] >= x_size) || (index[1] >= y_size) || (index[2] >= z_size)) {
+    return;
+  }
+
+  // Wrap a helper object around the array.
+  const unsigned int size[] = {x_size, y_size, z_size};
+  DeviceMatrix<3, float> matrix(size, array);
+
+  // Perform the multiplication.
+  matrix.set(index, matrix.get(index) * multiplier);
+  return;
+}
+/// @}
+
+BOOST_AUTO_TEST_SUITE(Utilities)
+BOOST_AUTO_TEST_CASE(Matrix1D) {
+  // Create a 1-dimensional matrix on the host.
+  static constexpr std::size_t X_SIZE = 1000;
+  HostMatrix<1, float> hostMatrix({X_SIZE});
+  BOOST_TEST_REQUIRE(hostMatrix.totalSize() == X_SIZE);
+  BOOST_TEST_REQUIRE(hostMatrix.size().at(0) == X_SIZE);
+  for (std::size_t i = 0; i < X_SIZE; ++i) {
+    hostMatrix.set({i}, i * PI);
+  }
+
+  // Copy the underlying memory block to the device.
+  auto deviceMatrix = make_device_array<float>(hostMatrix.totalSize());
+  hostMatrix.copyTo(deviceMatrix);
+
+  // Perform a matrix multiplication on the GPU.
+  static constexpr int blockSize = 256;
+  static const int numBlocks = (hostMatrix.size().at(0) + blockSize -
+                                1) / blockSize;
+  matrixMultiply<<<numBlocks, blockSize>>>(
+      hostMatrix.size().at(0), deviceMatrix.get(), 2.0f);
+  ACTS_CUDA_ERROR_CHECK(cudaGetLastError());
+  ACTS_CUDA_ERROR_CHECK(cudaDeviceSynchronize());
+
+  // Check the results.
+  hostMatrix.copyFrom(deviceMatrix);
+  float maxDeviation = 0.0f;
+  for (std::size_t i = 0; i < X_SIZE; ++i) {
+    maxDeviation = std::max(maxDeviation, std::abs(hostMatrix.get({i}) -
+                                                   i * PI * 2.0f));
+  }
+  BOOST_TEST_REQUIRE(maxDeviation < 0.001);
+}
+
+BOOST_AUTO_TEST_CASE(Matrix2D) {
+  // Create a 2-dimensional matrix on the host.
+  static constexpr std::size_t X_SIZE = 1000;
+  static constexpr std::size_t Y_SIZE = 800;
+  HostMatrix<2, float> hostMatrix({X_SIZE, Y_SIZE});
+  BOOST_TEST_REQUIRE(hostMatrix.totalSize() == X_SIZE * Y_SIZE);
+  BOOST_TEST_REQUIRE(hostMatrix.size().at(0) == X_SIZE);
+  BOOST_TEST_REQUIRE(hostMatrix.size().at(1) == Y_SIZE);
+  for (std::size_t i = 0; i < X_SIZE; ++i) {
+    for (std::size_t j = 0; j < Y_SIZE; ++j) {
+      hostMatrix.set({i, j}, i * j * PI);
     }
   }
 
-  // Create an output matrix.
-  HostMatrix<float> outputHost(MATRIX_SIZE, MATRIX_SIZE);
-  BOOST_TEST_REQUIRE(outputHost.size() == MATRIX_SIZE * MATRIX_SIZE);
+  // Copy the underlying memory block to the device.
+  auto deviceMatrix = make_device_array<float>(hostMatrix.totalSize());
+  hostMatrix.copyTo(deviceMatrix);
 
-  // Copy the input to the/a device, and run a simple kernel on it.
-  DeviceMatrix<float> inputDevice(MATRIX_SIZE, MATRIX_SIZE);
-  copyToDevice(inputDevice, inputHost);
-  DeviceMatrix<float> outputDevice(MATRIX_SIZE, MATRIX_SIZE);
-  static constexpr int blockSize = 256;
-  static const int numBlocks = (inputDevice.size() + blockSize - 1) / blockSize;
-  matrixTransform<<<numBlocks, blockSize>>>(
-      inputDevice.size(), inputDevice.getPtr(), outputDevice.getPtr());
+  // Perform a matrix multiplication on the GPU.
+  static constexpr dim3 blockSize(16, 16);
+  static const dim3 numBlocks(
+      (hostMatrix.size().at(0) + blockSize.x - 1) / blockSize.x,
+      (hostMatrix.size().at(1) + blockSize.y - 1) / blockSize.y);
+  matrixMultiply<<<numBlocks, blockSize>>>(
+      hostMatrix.size().at(0), hostMatrix.size().at(1),
+      deviceMatrix.get(), 5.0f);
+  ACTS_CUDA_ERROR_CHECK(cudaGetLastError());
   ACTS_CUDA_ERROR_CHECK(cudaDeviceSynchronize());
 
-  // Copy the result back to the host, and check it.
-  copyToHost(outputHost, outputDevice);
+  // Check the results.
+  hostMatrix.copyFrom(deviceMatrix);
   float maxDeviation = 0.0f;
-  static constexpr float EXPECTED_RESULT = M_PI * 2.0f;
-  for (int i = 0; i < MATRIX_SIZE; ++i) {
-    for (int j = 0; j < MATRIX_SIZE; ++j) {
-      maxDeviation = std::max(maxDeviation,
-                              std::abs(outputHost.get(i, j) - EXPECTED_RESULT));
+  for (std::size_t i = 0; i < X_SIZE; ++i) {
+    for (std::size_t j = 0; j < Y_SIZE; ++j) {
+      maxDeviation = std::max(maxDeviation, std::abs(hostMatrix.get({i, j}) -
+                                                     i * j * PI * 5.0f));
+    }
+  }
+  BOOST_TEST_REQUIRE(maxDeviation < 0.001);
+}
+
+BOOST_AUTO_TEST_CASE(Matrix3D) {
+  // Create a 3-dimensional matrix on the host. Note that this test needs
+  // ~1.6 GB of memory on the GPU. So old GPUs may have issues with it...
+  static constexpr std::size_t X_SIZE = 1000;
+  static constexpr std::size_t Y_SIZE = 800;
+  static constexpr std::size_t Z_SIZE = 500;
+  HostMatrix<3, float> hostMatrix({X_SIZE, Y_SIZE, Z_SIZE});
+  BOOST_TEST_REQUIRE(hostMatrix.totalSize() == X_SIZE * Y_SIZE * Z_SIZE);
+  BOOST_TEST_REQUIRE(hostMatrix.size().at(0) == X_SIZE);
+  BOOST_TEST_REQUIRE(hostMatrix.size().at(1) == Y_SIZE);
+  BOOST_TEST_REQUIRE(hostMatrix.size().at(2) == Z_SIZE);
+  for (std::size_t i = 0; i < X_SIZE; ++i) {
+    for (std::size_t j = 0; j < Y_SIZE; ++j) {
+      for (std::size_t k = 0; k < Z_SIZE; ++k) {
+        hostMatrix.set({i, j, k}, i * j * k * PI);
+      }
+    }
+  }
+
+  // Copy the underlying memory block to the device.
+  auto deviceMatrix = make_device_array<float>(hostMatrix.totalSize());
+  hostMatrix.copyTo(deviceMatrix);
+
+  // Perform a matrix multiplication on the GPU.
+  static constexpr dim3 blockSize(8, 8, 4);
+  static const dim3 numBlocks(
+      (hostMatrix.size().at(0) + blockSize.x - 1) / blockSize.x,
+      (hostMatrix.size().at(1) + blockSize.y - 1) / blockSize.y,
+      (hostMatrix.size().at(2) + blockSize.z - 1) / blockSize.z);
+  matrixMultiply<<<numBlocks, blockSize>>>(
+      hostMatrix.size().at(0), hostMatrix.size().at(1), hostMatrix.size().at(2),
+      deviceMatrix.get(), 1.2f);
+  ACTS_CUDA_ERROR_CHECK(cudaGetLastError());
+  ACTS_CUDA_ERROR_CHECK(cudaDeviceSynchronize());
+
+  // Check the results.
+  hostMatrix.copyFrom(deviceMatrix);
+  float maxDeviation = 0.0f;
+  for (std::size_t i = 0; i < X_SIZE; ++i) {
+    for (std::size_t j = 0; j < Y_SIZE; ++j) {
+      for (std::size_t k = 0; k < Z_SIZE; ++k) {
+        maxDeviation = std::max(maxDeviation,
+                                std::abs(hostMatrix.get({i, j, k}) -
+                                         i * j * k * PI * 1.2f));
+        if(maxDeviation > 0.001) {
+          std::cout << "i = " << i << ", j = " << j << ", k = " << k << std::endl;
+        }
+      }
     }
   }
   BOOST_TEST_REQUIRE(maxDeviation < 0.001);
