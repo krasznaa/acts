@@ -30,16 +30,16 @@ static constexpr float PI = M_PI;
 
 /// Simple kernels performing matrix multiplication.
 /// @{
-__global__ void matrixMultiply(unsigned int x_size, float* array,
+__global__ void matrixMultiply(std::size_t x_size, float* array,
                                float multiplier) {
   // Get the index to work on.
-  unsigned int index[] = {blockIdx.x * blockDim.x + threadIdx.x};
+  std::size_t index[] = {blockIdx.x * blockDim.x + threadIdx.x};
   if (index[0] >= x_size) {
     return;
   }
 
   // Wrap a helper object around the array.
-  const unsigned int size[] = {x_size};
+  const std::size_t size[] = {x_size};
   DeviceMatrix<1, float> matrix(size, array);
 
   // Perform the multiplication.
@@ -47,17 +47,17 @@ __global__ void matrixMultiply(unsigned int x_size, float* array,
   return;
 }
 
-__global__ void matrixMultiply(unsigned int x_size, unsigned int y_size,
+__global__ void matrixMultiply(std::size_t x_size, std::size_t y_size,
                                float* array, float multiplier) {
   // Get the index to work on.
-  unsigned int index[] = {blockIdx.x * blockDim.x + threadIdx.x,
-                          blockIdx.y * blockDim.y + threadIdx.y};
+  std::size_t index[] = {blockIdx.x * blockDim.x + threadIdx.x,
+                         blockIdx.y * blockDim.y + threadIdx.y};
   if ((index[0] >= x_size) || (index[1] >= y_size)) {
     return;
   }
 
   // Wrap a helper object around the array.
-  const unsigned int size[] = {x_size, y_size};
+  const std::size_t size[] = {x_size, y_size};
   DeviceMatrix<2, float> matrix(size, array);
 
   // Perform the multiplication.
@@ -65,19 +65,19 @@ __global__ void matrixMultiply(unsigned int x_size, unsigned int y_size,
   return;
 }
 
-__global__ void matrixMultiply(unsigned int x_size, unsigned int y_size,
-                               unsigned int z_size, float* array,
+__global__ void matrixMultiply(std::size_t x_size, std::size_t y_size,
+                               std::size_t z_size, float* array,
                                float multiplier) {
   // Get the index to work on.
-  unsigned int index[] = {blockIdx.x * blockDim.x + threadIdx.x,
-                          blockIdx.y * blockDim.y + threadIdx.y,
-                          blockIdx.z * blockDim.z + threadIdx.z};
+  std::size_t index[] = {blockIdx.x * blockDim.x + threadIdx.x,
+                         blockIdx.y * blockDim.y + threadIdx.y,
+                         blockIdx.z * blockDim.z + threadIdx.z};
   if ((index[0] >= x_size) || (index[1] >= y_size) || (index[2] >= z_size)) {
     return;
   }
 
   // Wrap a helper object around the array.
-  const unsigned int size[] = {x_size, y_size, z_size};
+  const std::size_t size[] = {x_size, y_size, z_size};
   DeviceMatrix<3, float> matrix(size, array);
 
   // Perform the multiplication.
