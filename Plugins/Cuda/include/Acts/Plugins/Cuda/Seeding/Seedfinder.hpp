@@ -8,9 +8,6 @@
 
 #pragma once
 
-// CUDA plugin include(s).
-#include "Acts/Plugins/Cuda/Utilities/StreamWrapper.hpp"
-
 // Acts include(s).
 #include "Acts/Seeding/Seed.hpp"
 #include "Acts/Seeding/SeedfinderConfig.hpp"
@@ -48,14 +45,9 @@ class Seedfinder {
   std::vector<Seed<external_spacepoint_t> > createSeedsForGroup(
       sp_range_t bottomSPs, sp_range_t middleSPs, sp_range_t topSPs) const;
 
-  /// Force the seed finding to use a particular CUDA stream
-  void setStream(StreamWrapper&& stream);
-
  private:
   /// Configuration for the seed finder
   SeedfinderConfig<external_spacepoint_t> m_config;
-  /// CUDA stream to use by the seed finding
-  StreamWrapper m_stream;
 };
 
 }  // namespace Cuda

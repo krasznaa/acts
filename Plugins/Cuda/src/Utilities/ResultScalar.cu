@@ -17,7 +17,13 @@ namespace Acts {
 namespace Cuda {
 
 template <typename T>
-ResultScalar<T>::ResultScalar() : m_array(make_device_array<T>(1)) {}
+ResultScalar<T>::ResultScalar() : m_array(make_device_array<T>(1)) {
+  // Initialise the variable on the device to zero. Since CUDA does not do that
+  // by itself.
+  Variable_t zero = 0;
+  ACTS_CUDA_ERROR_CHECK(cudaMemcpy(m_array.get(), &zero, sizeof(Variable_t),
+                                   cudaMemcpyHostToDevice));
+}
 
 template <typename T>
 typename ResultScalar<T>::pointer ResultScalar<T>::getPtr() const {
