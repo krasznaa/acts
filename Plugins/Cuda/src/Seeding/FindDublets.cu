@@ -19,50 +19,95 @@
 // System include(s).
 #include <cmath>
 
+namespace {
+
+/// Type of "other spacepoint" passed to the kernel
+enum OtherSPType : int {
+  BottomSP = 0, //< The "other" spacepoint is a bottom one
+  TopSP = 1 //< The "other" spacepoint is a top one
+};
+
+} // private namespace
+
 namespace Acts {
 namespace Cuda {
 namespace kernels {
 
-__global__ void findDublets(std::size_t nInnerSP, const float* innerSPArray,
-                            std::size_t nOuterSP, const float* outerSPArray,
+template<int SPType>
+__device__ float getDeltaR(float /*middleR*/, float /*otherR*/) {
+  // This function should *never* be called.
+  assert(false);
+  return 0.0f;
+}
+
+template<>
+__device__ float getDeltaR<BottomSP>(float middleR, float bottomR) {
+  return middleR - bottomR;
+}
+
+template<>
+__device__ float getDeltaR<TopSP>(float middleR, float topR) {
+  return topR - middleR;
+}
+
+template<int SPType>
+__device__ float getCotTheta(float /*middleZ*/, float /*otherZ*/,
+                             float /*deltaR*/) {
+  // This function should *never* be called.
+  assert(false);
+  return 0.0f;
+}
+
+template<>
+__device__ float getCotTheta<BottomSP>(float middleZ, float bottomZ,
+                                       float deltaR) {
+  return (middleZ - bottomZ) / deltaR;
+}
+
+template<>
+__device__ float getCotTheta<TopSP>(float middleZ, float topZ, float deltaR) {
+  return (topZ - middleZ) / deltaR;
+}
+
+template<int SPType>
+__global__ void findDublets(std::size_t nMiddleSP, const float* middleSPArray,
+                            std::size_t nOtherSP, const float* otherSPArray,
                             float deltaRMin, float deltaRMax, float cotThetaMax,
                             float collisionRegionMin, float collisionRegionMax,
-                            bool zOriginUseOuter, int* nCompPairs,
-                            int* compPairArray) {
+                            int* compCountArray, int* compArray) {
 
   // Figure out which dublet the kernel operates on.
-  const std::size_t innerIndex = blockIdx.x * blockDim.x + threadIdx.x;
-  const std::size_t outerIndex = blockIdx.y * blockDim.y + threadIdx.y;
+  const std::size_t middleIndex = blockIdx.x * blockDim.x + threadIdx.x;
+  const std::size_t otherIndex = blockIdx.y * blockDim.y + threadIdx.y;
 
   // If we're outside of bounds, stop here.
-  if ((innerIndex >= nInnerSP) || (outerIndex >= nOuterSP)) {
+  if ((middleIndex >= nMiddleSP) || (otherIndex >= nOtherSP)) {
     return;
   }
 
   // Create helper objects on top of the arrays.
-  const std::size_t innerSPSize[] = {nInnerSP, details::SP_DIMENSIONS};
-  DeviceMatrix<2, float> innerSP(innerSPSize, innerSPArray);
-  const std::size_t outerSPSize[] = {nOuterSP, details::SP_DIMENSIONS};
-  DeviceMatrix<2, float> outerSP(outerSPSize, outerSPArray);
-  const std::size_t compPairSize[] = {nInnerSP * nOuterSP, 2};
-  DeviceMatrix<2, int> compPairs(compPairSize, compPairArray);
+  const std::size_t middleSPSize[] = {nMiddleSP, details::SP_DIMENSIONS};
+  DeviceMatrix<2, float> middleSPs(middleSPSize, middleSPArray);
+  const std::size_t otherSPSize[] = {nOtherSP, details::SP_DIMENSIONS};
+  DeviceMatrix<2, float> otherSPs(otherSPSize, otherSPArray);
+  const std::size_t compSize[] = {nMiddleSP, nOtherSP};
+  DeviceMatrix<2, int> compMatrix(compSize, compArray);
 
-  std::size_t innerRIndex[] = {innerIndex, details::SP_R_INDEX};
-  std::size_t innerZIndex[] = {innerIndex, details::SP_Z_INDEX};
-  std::size_t outerRIndex[] = {outerIndex, details::SP_R_INDEX};
-  std::size_t outerZIndex[] = {outerIndex, details::SP_Z_INDEX};
+  std::size_t middleRIndex[] = {middleIndex, details::SP_R_INDEX};
+  std::size_t middleZIndex[] = {middleIndex, details::SP_Z_INDEX};
+  std::size_t otherRIndex[] = {otherIndex, details::SP_R_INDEX};
+  std::size_t otherZIndex[] = {otherIndex, details::SP_Z_INDEX};
 
   // Access the parameters of interest for the two space points.
-  const float innerR = innerSP.get(innerRIndex);
-  const float innerZ = innerSP.get(innerZIndex);
-  const float outerR = outerSP.get(outerRIndex);
-  const float outerZ = outerSP.get(outerZIndex);
+  const float middleR = middleSPs.get(middleRIndex);
+  const float middleZ = middleSPs.get(middleZIndex);
+  const float otherR = otherSPs.get(otherRIndex);
+  const float otherZ = otherSPs.get(otherZIndex);
 
   // Calculate variables used in the compatibility check.
-  float deltaR = outerR - innerR;
-  float cotTheta = (outerZ - innerZ) / deltaR;
-  float zOrigin = (zOriginUseOuter ? outerZ - outerR * cotTheta :
-                                     innerZ - innerR * cotTheta);
+  const float deltaR = getDeltaR<SPType>(middleR, otherR);
+  const float cotTheta = getCotTheta<SPType>(middleZ, otherZ, deltaR);
+  const float zOrigin = middleZ - middleR * cotTheta;
 
   // Perform the compatibility check.
   const bool isCompatible = ((deltaR >= deltaRMin) && (deltaR <= deltaRMax) &&
@@ -72,11 +117,10 @@ __global__ void findDublets(std::size_t nInnerSP, const float* innerSPArray,
 
   // If they are compatible, save their indices into the output matrix.
   if (isCompatible) {
-    const int compRow = atomicAdd(nCompPairs, 1);
-    std::size_t compInnerIndex[] = {static_cast<std::size_t>(compRow), 0};
-    std::size_t compOuterIndex[] = {static_cast<std::size_t>(compRow), 1};
-    compPairs.set(compInnerIndex, innerIndex);
-    compPairs.set(compOuterIndex, outerIndex);
+    const int compRow = atomicAdd(compCountArray + middleIndex, 1);
+    std::size_t compIndex[] = {middleIndex,
+                               static_cast<std::size_t>(compRow)};
+    compMatrix.set(compIndex, otherIndex);
   }
   return;
 }
@@ -95,26 +139,23 @@ void findDublets(std::size_t maxBlockSize,
                  float deltaRMin, float deltaRMax,
                  float cotThetaMax, float collisionRegionMin,
                  float collisionRegionMax,
-                 ResultScalar<int>& nBottomMiddlePairs,
-                 device_array<int>& bottomMiddlePairs,
-                 ResultScalar<int>& nMiddleTopPairs,
-                 device_array<int>& middleTopPairs) {
+                 device_array<int>& middleBottomCountArray,
+                 device_array<int>& middleBottomArray,
+                 device_array<int>& middleTopCountArray,
+                 device_array<int>& middleTopArray) {
 
   // Calculate the parallelisation for the middle<->bottom spacepoint
   // compatibility flagging.
-  const dim3 blockSizeBM(maxBlockSize, 1);
-  const dim3 numBlocksBM((nBottomSP + blockSizeBM.x - 1)/blockSizeBM.x,
-                         (nMiddleSP + blockSizeBM.y - 1)/blockSizeBM.y);
-
-  // Variable helping with readability.
-  static constexpr bool ZORIGIN_USE_OUTER = true;
+  const dim3 blockSizeMB(1, maxBlockSize);
+  const dim3 numBlocksMB((nMiddleSP + blockSizeMB.x - 1)/blockSizeMB.x,
+                         (nBottomSP + blockSizeMB.y - 1)/blockSizeMB.y);
 
   // Launch the middle-bottom dublet finding.
-  kernels::findDublets<<<numBlocksBM, blockSizeBM>>>(
-      nBottomSP, bottomSPDeviceMatrix.get(),
+  kernels::findDublets<BottomSP><<<numBlocksMB, blockSizeMB>>>(
       nMiddleSP, middleSPDeviceMatrix.get(),
+      nBottomSP, bottomSPDeviceMatrix.get(),
       deltaRMin, deltaRMax, cotThetaMax, collisionRegionMin, collisionRegionMax,
-      ZORIGIN_USE_OUTER, nBottomMiddlePairs.getPtr(), bottomMiddlePairs.get());
+      middleBottomCountArray.get(), middleBottomArray.get());
   ACTS_CUDA_ERROR_CHECK(cudaGetLastError());
 
   // Calculate the parallelisation for the middle<->top spacepoint
@@ -124,11 +165,11 @@ void findDublets(std::size_t maxBlockSize,
                          (nTopSP    + blockSizeMT.y - 1)/blockSizeMT.y);
 
   // Launch the middle-bottom dublet finding.
-  kernels::findDublets<<<numBlocksMT, blockSizeMT>>>(
+  kernels::findDublets<TopSP><<<numBlocksMT, blockSizeMT>>>(
       nMiddleSP, middleSPDeviceMatrix.get(),
       nTopSP, topSPDeviceMatrix.get(),
       deltaRMin, deltaRMax, cotThetaMax, collisionRegionMin, collisionRegionMax,
-      !ZORIGIN_USE_OUTER, nMiddleTopPairs.getPtr(), middleTopPairs.get());
+      middleTopCountArray.get(), middleTopArray.get());
   ACTS_CUDA_ERROR_CHECK(cudaGetLastError());
   ACTS_CUDA_ERROR_CHECK(cudaDeviceSynchronize());
   return;

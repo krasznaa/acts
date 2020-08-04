@@ -10,7 +10,6 @@
 
 // CUDA plugin include(s).
 #include "Acts/Plugins/Cuda/Utilities/Arrays.hpp"
-#include "Acts/Plugins/Cuda/Utilities/ResultScalar.hpp"
 
 // System include(s).
 #include <cstddef>
@@ -29,10 +28,10 @@ void findDublets(std::size_t maxBlockSize,
                  float deltaRMin, float deltaRMax,
                  float cotThetaMax, float collisionRegionMin,
                  float collisionRegionMax,
-                 ResultScalar<int>& nBottomMiddlePairs,
-                 device_array<int>& bottomMiddlePairs,
-                 ResultScalar<int>& nMiddleTopPairs,
-                 device_array<int>& middleTopPairs);
+                 device_array<int>& middleBottomCountArray,
+                 device_array<int>& middleBottomArray,
+                 device_array<int>& middleTopCountArray,
+                 device_array<int>& middleTopArray);
 
 }  // namespace details
 }  // namespace Cuda

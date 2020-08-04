@@ -10,6 +10,7 @@
 
 // CUDA plugin include(s).
 #include "Acts/Plugins/Cuda/Seeding/FindDublets.hpp"
+#include "Acts/Plugins/Cuda/Seeding/FindTriplets.hpp"
 #include "Acts/Plugins/Cuda/Seeding/Types.hpp"
 #include "Acts/Plugins/Cuda/Utilities/Arrays.hpp"
 #include "Acts/Plugins/Cuda/Utilities/HostMatrix.hpp"
@@ -18,6 +19,11 @@
 // Acts include(s).
 #include "Acts/Seeding/InternalSeed.hpp"
 #include "Acts/Seeding/InternalSpacePoint.hpp"
+
+// System include(s).
+#include <tuple>
+#include <vector>
+#include <iostream>
 
 namespace Acts {
 namespace Cuda {
@@ -117,17 +123,29 @@ Seedfinder<external_spacepoint_t>::createSeedsForGroup(
   // GPU Execution
   //---------------------------------
 
-  // Matrices holding the viable bottom-middle and middle-top pairs on the
-  // device.
-  auto bottomMiddlePairs = make_device_array<int>(2 * bottomSPvec.size() *
-                                                  middleSPvec.size());
-  auto middleTopPairs = make_device_array<int>(2 * middleSPvec.size() *
-                                               topSPvec.size());
-  // The number of elements filled into these matrices.
-  ResultScalar<int> nBottomMiddlePairs;
-  ResultScalar<int> nMiddleTopPairs;
+  // Matrices holding the viable bottom-middle and middle-top pairs.
+  HostMatrix<1, int> middleBottomCounts({middleSPvec.size()});
+  HostMatrix<1, int> middleTopCounts({middleSPvec.size()});
 
-  // Launch the "triplet flagging" code.
+  // Reset the values in the count vectors.
+  for (std::size_t i = 0; i < middleSPvec.size(); ++i) {
+    middleBottomCounts.set({i}, 0);
+    middleTopCounts.set({i}, 0);
+  }
+
+  // Set up the device memory for these.
+  auto middleBottomCountArray =
+      make_device_array<int>(middleBottomCounts.totalSize());
+  auto middleBottomArray =
+      make_device_array<int>(middleSPvec.size() * bottomSPvec.size());
+  auto middleTopCountArray =
+      make_device_array<int>(middleTopCounts.totalSize());
+  auto middleTopArray =
+      make_device_array<int>(middleSPvec.size() * topSPvec.size());
+  middleBottomCounts.copyTo(middleBottomCountArray);
+  middleTopCounts.copyTo(middleTopCountArray);
+
+  // Launch the dublet finding code.
   details::findDublets(m_config.maxBlockSize,
                        bottomSPvec.size(), bottomSPDeviceMatrix,
                        middleSPvec.size(), middleSPDeviceMatrix,
@@ -135,8 +153,27 @@ Seedfinder<external_spacepoint_t>::createSeedsForGroup(
                        m_config.deltaRMin, m_config.deltaRMax,
                        m_config.cotThetaMax, m_config.collisionRegionMin,
                        m_config.collisionRegionMax,
-                       nBottomMiddlePairs, bottomMiddlePairs,
-                       nMiddleTopPairs, middleTopPairs);
+                       middleBottomCountArray, middleBottomArray,
+                       middleTopCountArray, middleTopArray);
+
+  // Count the number of triplet candidate we will have to evaluate, on the
+  // device.
+  const int nTripletCandidates =
+      details::countTriplets(m_config.maxBlockSize, middleSPvec.size(),
+                             middleBottomCountArray, middleTopCountArray);
+
+  // If no triplet candidates have been found, stop here.
+  if (nTripletCandidates == 0) {
+    return outputVec;
+  }
+
+  // Launch the triplet finding code on all of the previously found dublets.
+  details::findTriplets(m_config.maxBlockSize, nTripletCandidates,
+                        bottomSPvec.size(), bottomSPDeviceMatrix,
+                        middleSPvec.size(), middleSPDeviceMatrix,
+                        topSPvec.size(), topSPDeviceMatrix,
+                        middleBottomCountArray, middleBottomArray,
+                        middleTopCountArray, middleTopArray);
 
   return outputVec;
 }
