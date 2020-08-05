@@ -8,9 +8,9 @@
 
 // CUDA plugin include(s).
 #include "Acts/Plugins/Cuda/Utilities/Arrays.hpp"
-#include "Acts/Plugins/Cuda/Utilities/DeviceMatrix.cuh"
 #include "Acts/Plugins/Cuda/Utilities/ErrorCheck.cuh"
 #include "Acts/Plugins/Cuda/Utilities/HostMatrix.hpp"
+#include "Acts/Plugins/Cuda/Utilities/MatrixMacros.hpp"
 
 // Boost include(s).
 #include <boost/test/unit_test.hpp>
@@ -30,38 +30,31 @@ static constexpr float PI = M_PI;
 
 /// Simple kernels performing matrix multiplication.
 /// @{
-__global__ void matrixMultiply(std::size_t x_size, float* array,
+__global__ void matrixMultiply(std::size_t size, float* array,
                                float multiplier) {
   // Get the index to work on.
-  std::size_t index[] = {blockIdx.x * blockDim.x + threadIdx.x};
-  if (index[0] >= x_size) {
+  const std::size_t index = blockIdx.x * blockDim.x + threadIdx.x;
+  if (index >= size) {
     return;
   }
 
-  // Wrap a helper object around the array.
-  const std::size_t size[] = {x_size};
-  DeviceMatrix<1, float> matrix(size, array);
-
   // Perform the multiplication.
-  matrix.set(index, matrix.get(index) * multiplier);
+  array[index] *= multiplier;
   return;
 }
 
 __global__ void matrixMultiply(std::size_t x_size, std::size_t y_size,
                                float* array, float multiplier) {
   // Get the index to work on.
-  std::size_t index[] = {blockIdx.x * blockDim.x + threadIdx.x,
-                         blockIdx.y * blockDim.y + threadIdx.y};
-  if ((index[0] >= x_size) || (index[1] >= y_size)) {
+  const std::size_t x_index = blockIdx.x * blockDim.x + threadIdx.x;
+  const std::size_t y_index = blockIdx.y * blockDim.y + threadIdx.y;
+  if ((x_index >= x_size) || (y_index >= y_size)) {
     return;
   }
 
-  // Wrap a helper object around the array.
-  const std::size_t size[] = {x_size, y_size};
-  DeviceMatrix<2, float> matrix(size, array);
-
   // Perform the multiplication.
-  matrix.set(index, matrix.get(index) * multiplier);
+  ACTS_CUDA_MATRIX2D_ELEMENT(array, x_size, y_size, x_index, y_index) *=
+      multiplier;
   return;
 }
 
@@ -69,19 +62,16 @@ __global__ void matrixMultiply(std::size_t x_size, std::size_t y_size,
                                std::size_t z_size, float* array,
                                float multiplier) {
   // Get the index to work on.
-  std::size_t index[] = {blockIdx.x * blockDim.x + threadIdx.x,
-                         blockIdx.y * blockDim.y + threadIdx.y,
-                         blockIdx.z * blockDim.z + threadIdx.z};
-  if ((index[0] >= x_size) || (index[1] >= y_size) || (index[2] >= z_size)) {
+  const std::size_t x_index = blockIdx.x * blockDim.x + threadIdx.x;
+  const std::size_t y_index = blockIdx.y * blockDim.y + threadIdx.y;
+  const std::size_t z_index = blockIdx.z * blockDim.z + threadIdx.z;
+  if ((x_index >= x_size) || (y_index >= y_size) || (z_index >= z_size)) {
     return;
   }
 
-  // Wrap a helper object around the array.
-  const std::size_t size[] = {x_size, y_size, z_size};
-  DeviceMatrix<3, float> matrix(size, array);
-
   // Perform the multiplication.
-  matrix.set(index, matrix.get(index) * multiplier);
+  ACTS_CUDA_MATRIX3D_ELEMENT(array, x_size, y_size, z_size, x_index, y_index,
+                             z_index) *= multiplier;
   return;
 }
 /// @}
@@ -164,8 +154,8 @@ BOOST_AUTO_TEST_CASE(Matrix2D) {
 BOOST_AUTO_TEST_CASE(Matrix3D) {
   // Create a 3-dimensional matrix on the host. Note that this test needs
   // ~1.6 GB of memory on the GPU. So old GPUs may have issues with it...
-  static constexpr std::size_t X_SIZE = 1000;
-  static constexpr std::size_t Y_SIZE = 800;
+  static constexpr std::size_t X_SIZE = 100;
+  static constexpr std::size_t Y_SIZE = 80;
   static constexpr std::size_t Z_SIZE = 500;
   HostMatrix<3, float> hostMatrix({X_SIZE, Y_SIZE, Z_SIZE});
   BOOST_TEST_REQUIRE(hostMatrix.totalSize() == X_SIZE * Y_SIZE * Z_SIZE);
@@ -205,9 +195,6 @@ BOOST_AUTO_TEST_CASE(Matrix3D) {
         maxDeviation = std::max(maxDeviation,
                                 std::abs(hostMatrix.get({i, j, k}) -
                                          i * j * k * PI * 1.2f));
-        if(maxDeviation > 0.001) {
-          std::cout << "i = " << i << ", j = " << j << ", k = " << k << std::endl;
-        }
       }
     }
   }
