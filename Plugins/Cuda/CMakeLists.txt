@@ -10,10 +10,9 @@ add_library(
   include/Acts/Plugins/Cuda/Seeding/Seedfinder.ipp
   include/Acts/Plugins/Cuda/Seeding/Types.hpp
   include/Acts/Plugins/Cuda/Utilities/Arrays.hpp
-  include/Acts/Plugins/Cuda/Utilities/DeviceMatrix.cuh
-  include/Acts/Plugins/Cuda/Utilities/DeviceMatrix.ipp
   include/Acts/Plugins/Cuda/Utilities/ErrorCheck.cuh
   include/Acts/Plugins/Cuda/Utilities/HostMatrix.hpp
+  include/Acts/Plugins/Cuda/Utilities/MatrixMacros.hpp
   include/Acts/Plugins/Cuda/Utilities/ResultScalar.hpp
   include/Acts/Plugins/Cuda/Utilities/StreamWrapper.hpp
   src/Seeding/FindDublets.cu

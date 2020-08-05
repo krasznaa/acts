@@ -9,14 +9,14 @@
 // CUDA plugin include(s).
 #include "Acts/Plugins/Cuda/Seeding/FindDublets.hpp"
 #include "Acts/Plugins/Cuda/Seeding/Types.hpp"
-#include "Acts/Plugins/Cuda/Utilities/DeviceMatrix.cuh"
 #include "Acts/Plugins/Cuda/Utilities/ErrorCheck.cuh"
-#include "Acts/Plugins/Cuda/Utilities/HostMatrix.hpp"
+#include "Acts/Plugins/Cuda/Utilities/MatrixMacros.hpp"
 
 // CUDA include(s).
 #include <cuda_runtime.h>
 
 // System include(s).
+#include <cassert>
 #include <cmath>
 
 namespace {
@@ -104,12 +104,9 @@ __global__ void findDublets(std::size_t nMiddleSP,
 
   // If they are compatible, save their indices into the output matrix.
   if (isCompatible) {
-    const std::size_t compSize[] = {nMiddleSP, nOtherSP};
-    DeviceMatrix<2, int> compMatrix(compSize, compArray);
     const int compRow = atomicAdd(compCountArray + middleIndex, 1);
-    std::size_t compIndex[] = {middleIndex,
-                               static_cast<std::size_t>(compRow)};
-    compMatrix.set(compIndex, otherIndex);
+    ACTS_CUDA_MATRIX2D_ELEMENT(compArray, nMiddleSP, nOtherSP, middleIndex,
+                               compRow) = otherIndex;
   }
   return;
 }
@@ -124,17 +121,17 @@ __global__ void countDublets(std::size_t nMiddleSP,
   // Get the thread identifier. Note that the kernel launch requests half as
   // many threads than how many elements we have in the arrays.
   const int middleIndex = blockIdx.x * blockDim.x * 2 + threadIdx.x;
+
   details::DubletCounts thisSum;
-  thisSum.nDublets = ((middleIndex < nMiddleSP) ?
-                      middleBottomCountArray[middleIndex] +
-                      middleTopCountArray[middleIndex] : 0);
-  thisSum.nTriplets = ((middleIndex < nMiddleSP) ?
-                       middleBottomCountArray[middleIndex] *
-                       middleTopCountArray[middleIndex] : 0);
-  thisSum.maxMBDublets = ((middleIndex < nMiddleSP) ?
-                          middleBottomCountArray[middleIndex] : 0);
-  thisSum.maxMTDublets = ((middleIndex < nMiddleSP) ?
-                          middleTopCountArray[middleIndex] : 0);
+  if (middleIndex < nMiddleSP) {
+    thisSum.nDublets = (middleBottomCountArray[middleIndex] +
+                        middleTopCountArray[middleIndex]);
+    thisSum.nTriplets = (middleBottomCountArray[middleIndex] *
+                         middleTopCountArray[middleIndex]);
+    thisSum.maxMBDublets = middleBottomCountArray[middleIndex];
+    thisSum.maxMTDublets = middleTopCountArray[middleIndex];
+    thisSum.maxTriplets = thisSum.nTriplets;
+  }
   if (middleIndex + blockDim.x < nMiddleSP) {
     thisSum.nDublets += (middleBottomCountArray[middleIndex + blockDim.x] +
                          middleTopCountArray[middleIndex + blockDim.x]);
@@ -144,6 +141,10 @@ __global__ void countDublets(std::size_t nMiddleSP,
                                thisSum.maxMBDublets);
     thisSum.maxMTDublets = max(middleTopCountArray[middleIndex + blockDim.x],
                                thisSum.maxMTDublets);
+    thisSum.maxTriplets =
+        max((middleBottomCountArray[middleIndex + blockDim.x] *
+             middleTopCountArray[middleIndex + blockDim.x]),
+        thisSum.maxTriplets);
   }
 
   // Load the first sum step into shared memory.
@@ -158,6 +159,7 @@ __global__ void countDublets(std::size_t nMiddleSP,
       thisSum.nTriplets += otherSum.nTriplets;
       thisSum.maxMBDublets = max(thisSum.maxMBDublets, otherSum.maxMBDublets);
       thisSum.maxMTDublets = max(thisSum.maxMTDublets, otherSum.maxMTDublets);
+      thisSum.maxTriplets = max(thisSum.maxTriplets, otherSum.maxTriplets);
       sum[threadIdx.x] = thisSum;
     }
     __syncthreads();
@@ -257,6 +259,8 @@ DubletCounts countDublets(std::size_t maxBlockSize, std::size_t nMiddleSP,
                                    result.maxMBDublets);
     result.maxMTDublets = std::max(dubletCountsHost.get()[i].maxMTDublets,
                                    result.maxMTDublets);
+    result.maxTriplets = std::max(dubletCountsHost.get()[i].maxTriplets,
+                                  result.maxTriplets);
   }
   return result;
 }

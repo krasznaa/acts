@@ -170,7 +170,10 @@ Seedfinder<external_spacepoint_t>::createSeedsForGroup(
                         middleSPVec.size(), middleSPDeviceArray,
                         topSPVec.size(), topSPDeviceArray,
                         middleBottomCountArray, middleBottomArray,
-                        middleTopCountArray, middleTopArray);
+                        middleTopCountArray, middleTopArray,
+                        m_config.maxScatteringAngle2, m_config.sigmaScattering,
+                        m_config.minHelixDiameter2, m_config.pT2perRadius,
+                        m_config.impactMax);
 
   return outputVec;
 }

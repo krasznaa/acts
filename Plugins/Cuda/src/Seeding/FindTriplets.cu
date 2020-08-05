@@ -9,17 +9,15 @@
 // CUDA plugin include(s).
 #include "Acts/Plugins/Cuda/Seeding/FindTriplets.hpp"
 #include "Acts/Plugins/Cuda/Seeding/Types.hpp"
-#include "Acts/Plugins/Cuda/Utilities/DeviceMatrix.cuh"
 #include "Acts/Plugins/Cuda/Utilities/ErrorCheck.cuh"
-#include "Acts/Plugins/Cuda/Utilities/HostMatrix.hpp"
+#include "Acts/Plugins/Cuda/Utilities/MatrixMacros.hpp"
 
 // CUDA include(s).
 #include <cuda_runtime.h>
 
 // System include(s).
+#include <cassert>
 #include <cmath>
-
-#include <iostream>
 
 namespace Acts {
 namespace Cuda {
@@ -100,33 +98,14 @@ __global__ void transformCoordinates(int nDublets, int maxMBDublets,
     return;
   }
 
-  // Create helper objects on top of the dublet matrices.
-  const std::size_t middleBottomMatrixSize[] = {nMiddleSP, nBottomSP};
-  DeviceMatrix<2, int> middleBottomMatrix(middleBottomMatrixSize,
-                                          middleBottomArray);
-  const std::size_t middleTopMatrixSize[] = {nMiddleSP, nTopSP};
-  DeviceMatrix<2, int> middleTopMatrix(middleTopMatrixSize,
-                                       middleTopArray);
-
-  // Create helper objects on top of the LinCircle matrices.
-  const std::size_t bottomSPLinTransMatrixSize[] =
-      {nMiddleSP, static_cast<std::size_t>(maxMBDublets)};
-  DeviceMatrix<2, details::LinCircle>
-      bottomSPLinTransMatrix(bottomSPLinTransMatrixSize,
-                             bottomSPLinTransArray);
-  const std::size_t topSPLinTransMatrixSize[] =
-      {nMiddleSP, static_cast<std::size_t>(maxMTDublets)};
-  DeviceMatrix<2, details::LinCircle>
-      topSPLinTransMatrix(topSPLinTransMatrixSize, topSPLinTransArray);
-
   // Find the dublet to transform.
   std::size_t middleIndex = 0;
   int runningIndex = dubletIndex;
   int tmpValue = 0;
   while (runningIndex >= (tmpValue = (middleBottomCountArray[middleIndex] +
                                       middleTopCountArray[middleIndex]))) {
-    assert(middleIndex < nMiddleSP);
     middleIndex += 1;
+    assert(middleIndex < nMiddleSP);
     runningIndex -= tmpValue;
   }
   const bool transformBottom =
@@ -138,35 +117,51 @@ __global__ void transformCoordinates(int nDublets, int maxMBDublets,
 
   // Perform the transformation.
   if (transformBottom) {
-    std::size_t middleBottomMatrixIndex[] = {middleIndex, bottomMatrixIndex};
-    std::size_t bottomIndex = middleBottomMatrix.get(middleBottomMatrixIndex);
+    std::size_t bottomIndex =
+        ACTS_CUDA_MATRIX2D_ELEMENT(middleBottomArray, nMiddleSP, nBottomSP,
+                                   middleIndex, bottomMatrixIndex);
     assert(bottomIndex < nBottomSP);
     transformCoordinates(middleSPArray[middleIndex], bottomSPArray[bottomIndex],
-                         bottomSPLinTransMatrix.getNC(middleBottomMatrixIndex),
+                         ACTS_CUDA_MATRIX2D_ELEMENT(bottomSPLinTransArray,
+                                                    nMiddleSP, maxMBDublets,
+                                                    middleIndex,
+                                                    bottomMatrixIndex),
                          true);
   } else {
-    std::size_t middleTopMatrixIndex[] = {middleIndex, topMatrixIndex};
-    std::size_t topIndex = middleTopMatrix.get(middleTopMatrixIndex);
+    std::size_t topIndex =
+        ACTS_CUDA_MATRIX2D_ELEMENT(middleTopArray, nMiddleSP, nTopSP,
+                                   middleIndex, topMatrixIndex);
     assert(topIndex < nTopSP);
     transformCoordinates(middleSPArray[middleIndex], topSPArray[topIndex],
-                         topSPLinTransMatrix.getNC(middleTopMatrixIndex),
+                         ACTS_CUDA_MATRIX2D_ELEMENT(topSPLinTransArray,
+                                                    nMiddleSP, maxMTDublets,
+                                                    middleIndex,
+                                                    topMatrixIndex),
                          false);
   }
 
   return;
 }
 
-__global__ void findTriplets(int nTripletCandidates,
+__global__ void findTriplets(int nTripletCandidates, int maxMBDublets,
+                             int maxMTDublets, int maxTriplets,
                              std::size_t nBottomSP,
                              const details::SpacePoint* bottomSPArray,
                              std::size_t nMiddleSP,
                              const details::SpacePoint* middleSPArray,
                              std::size_t nTopSP,
                              const details::SpacePoint* topSPArray,
+                             const details::LinCircle* bottomSPLinTransArray,
+                             const details::LinCircle* topSPLinTransArray,
                              const int* middleBottomCountArray,
                              const int* middleBottomArray,
                              const int* middleTopCountArray,
-                             const int* middleTopArray) {
+                             const int* middleTopArray,
+                             float maxScatteringAngle2, float sigmaScattering,
+                             float minHelixDiameter2, float pT2perRadius,
+                             float impactMax,
+                             int* tripletCountArray,
+                             details::Triplet* tripletArray) {
 
   // Get the global index.
   const int tripletIndex = blockIdx.x * blockDim.x + threadIdx.x;
@@ -175,14 +170,6 @@ __global__ void findTriplets(int nTripletCandidates,
   if (tripletIndex >= nTripletCandidates) {
     return;
   }
-
-  // Create helper objects on top of the dublet matrices.
-  const std::size_t middleBottomMatrixSize[] = {nMiddleSP, nBottomSP};
-  DeviceMatrix<2, int> middleBottomMatrix(middleBottomMatrixSize,
-                                          middleBottomArray);
-  const std::size_t middleTopMatrixSize[] = {nMiddleSP, nTopSP};
-  DeviceMatrix<2, int> middleTopMatrix(middleTopMatrixSize,
-                                       middleTopArray);
 
   // Find the dublet pair to evaluate.
   std::size_t middleIndex = 0;
@@ -198,24 +185,111 @@ __global__ void findTriplets(int nTripletCandidates,
     runningIndex / middleTopCountArray[middleIndex];
   assert(bottomMatrixIndex < middleBottomCountArray[middleIndex]);
   std::size_t topMatrixIndex = runningIndex % middleTopCountArray[middleIndex];
-  std::size_t middleBottomMatrixIndex[] = {middleIndex, bottomMatrixIndex};
-  std::size_t middleTopMatrixIndex[] = {middleIndex, topMatrixIndex};
-  std::size_t bottomIndex = middleBottomMatrix.get(middleBottomMatrixIndex);
+  const std::size_t bottomIndex =
+      ACTS_CUDA_MATRIX2D_ELEMENT(middleBottomArray, nMiddleSP, nBottomSP,
+                                 middleIndex, bottomMatrixIndex);
   assert(bottomIndex < nBottomSP);
-  std::size_t topIndex = middleTopMatrix.get(middleTopMatrixIndex);
+  const std::size_t topIndex =
+      ACTS_CUDA_MATRIX2D_ELEMENT(middleTopArray, nMiddleSP, nTopSP,
+                                 middleIndex, topMatrixIndex);
   assert(topIndex < nTopSP);
 
-  // Extract the properties of the selected spacepoints.
-  /*
-  float xM = middleSPArray[middleIndex].x;
-  float yM = middleSPArray[middleIndex].y;
-  float zM = middleSPArray[middleIndex].z;
-  float rM = middleSPArray[middleIndex].radius;
-  float varianceZM = middleSPArray[middleIndex].varianceZ;
-  float varianceRM = middleSPArray[middleIndex].varianceR;
-  float cosPhiM = xM / rM;
-  float sinPhiM = yM / rM;
-  */
+  // Load the transformed coordinates of the bottom spacepoint into the thread.
+  const details::LinCircle lb =
+      ACTS_CUDA_MATRIX2D_ELEMENT(bottomSPLinTransArray, nMiddleSP, maxMBDublets,
+                                 middleIndex, bottomMatrixIndex);
+
+  // 1+(cot^2(theta)) = 1/sin^2(theta)
+  float iSinTheta2 = (1. + lb.cotTheta * lb.cotTheta);
+  // calculate max scattering for min momentum at the seed's theta angle
+  // scaling scatteringAngle^2 by sin^2(theta) to convert pT^2 to p^2
+  // accurate would be taking 1/atan(thetaBottom)-1/atan(thetaTop) <
+  // scattering
+  // but to avoid trig functions we approximate cot by scaling by
+  // 1/sin^4(theta)
+  // resolving with pT to p scaling --> only divide by sin^2(theta)
+  // max approximation error for allowed scattering angles of 0.04 rad at
+  // eta=infinity: ~8.5%
+  float scatteringInRegion2 = maxScatteringAngle2 * iSinTheta2;
+  // multiply the squared sigma onto the squared scattering
+  scatteringInRegion2 *= sigmaScattering * sigmaScattering;
+
+  const details::LinCircle lt =
+      ACTS_CUDA_MATRIX2D_ELEMENT(topSPLinTransArray, nMiddleSP, maxMTDublets,
+                                 middleIndex, topMatrixIndex);
+
+  // Load the parameters of the middle spacepoint into the thread.
+  const details::SpacePoint spM = middleSPArray[middleIndex];
+
+  // add errors of spB-spM and spM-spT pairs and add the correlation term
+  // for errors on spM
+  float error2 = lt.Er + lb.Er +
+                 2 * (lb.cotTheta * lt.cotTheta * spM.varianceR +
+                      spM.varianceZ) * lb.iDeltaR * lt.iDeltaR;
+
+  float deltaCotTheta = lb.cotTheta - lt.cotTheta;
+  float deltaCotTheta2 = deltaCotTheta * deltaCotTheta;
+  float dCotThetaMinusError2 = 0.0f;
+
+  // if the error is larger than the difference in theta, no need to
+  // compare with scattering
+  if (deltaCotTheta2 - error2 > 0) {
+    deltaCotTheta = fabs(deltaCotTheta);
+    // if deltaTheta larger than the scattering for the lower pT cut, skip
+    float error = sqrtf(error2);
+    dCotThetaMinusError2 =
+        deltaCotTheta2 + error2 - 2 * deltaCotTheta * error;
+    // avoid taking root of scatteringInRegion
+    // if left side of ">" is positive, both sides of unequality can be
+    // squared
+    // (scattering is always positive)
+
+    if (dCotThetaMinusError2 > scatteringInRegion2) {
+      return;
+    }
+  }
+
+  // protects against division by 0
+  float dU = lt.U - lb.U;
+  if (dU == 0.) {
+    return;
+  }
+  // A and B are evaluated as a function of the circumference parameters
+  // x_0 and y_0
+  float A = (lt.V - lb.V) / dU;
+  float S2 = 1. + A * A;
+  float B = lb.V - A * lb.U;
+  float B2 = B * B;
+  // sqrt(S2)/B = 2 * helixradius
+  // calculated radius must not be smaller than minimum radius
+  if (S2 < B2 * minHelixDiameter2) {
+    return;
+  }
+  // 1/helixradius: (B/sqrt(S2))/2 (we leave everything squared)
+  float iHelixDiameter2 = B2 / S2;
+  // calculate scattering for p(T) calculated from seed curvature
+  float pT2scatter = 4 * iHelixDiameter2 * pT2perRadius;
+  // TODO: include upper pT limit for scatter calc
+  // convert p(T) to p scaling by sin^2(theta) AND scale by 1/sin^4(theta)
+  // from rad to deltaCotTheta
+  float p2scatter = pT2scatter * iSinTheta2;
+  // if deltaTheta larger than allowed scattering for calculated pT, skip
+  if ((deltaCotTheta2 - error2 > 0) &&
+      (dCotThetaMinusError2 >
+       p2scatter * sigmaScattering * sigmaScattering)) {
+    return;
+  }
+  // A and B allow calculation of impact params in U/V plane with linear
+  // function
+  // (in contrast to having to solve a quadratic function in x/y plane)
+  float Im = fabs((A - B * spM.radius) * spM.radius);
+
+  if (Im <= impactMax) {
+    const int tripletRow = atomicAdd(tripletCountArray + middleIndex, 1);
+    details::Triplet triplet = {bottomIndex, topIndex, Im, B / sqrtf(S2)};
+    ACTS_CUDA_MATRIX2D_ELEMENT(tripletArray, nMiddleSP, maxTriplets,
+                               middleIndex, tripletRow) = triplet;
+  }
 
   return;
 }
@@ -234,7 +308,10 @@ void findTriplets(int maxBlockSize, const DubletCounts& dubletCounts,
                   const device_array<int>& middleBottomCountArray,
                   const device_array<int>& middleBottomArray,
                   const device_array<int>& middleTopCountArray,
-                  const device_array<int>& middleTopArray) {
+                  const device_array<int>& middleTopArray,
+                  float maxScatteringAngle2, float sigmaScattering,
+                  float minHelixDiameter2, float pT2perRadius,
+                  float impactMax) {
 
   // Calculate the parallelisation for the parameter transformation.
   const int numBlocksLT =
@@ -261,12 +338,22 @@ void findTriplets(int maxBlockSize, const DubletCounts& dubletCounts,
   const int numBlocksFT =
       (dubletCounts.nTriplets + maxBlockSize - 1) / maxBlockSize;
 
+  // Create the variables used for the triplet finding.
+  auto tripletCountDeviceArray = make_device_array<int>(nMiddleSP);
+  auto tripletDeviceArray =
+      make_device_array<Triplet>(nMiddleSP * dubletCounts.maxTriplets);
+
   // Launch the triplet finding.
   kernels::findTriplets<<<numBlocksFT, maxBlockSize>>>(
-      dubletCounts.nTriplets, nBottomSP, bottomSPArray.get(), nMiddleSP,
+      dubletCounts.nTriplets, dubletCounts.maxMBDublets,
+      dubletCounts.maxMTDublets, dubletCounts.maxTriplets,
+      nBottomSP, bottomSPArray.get(), nMiddleSP,
       middleSPArray.get(), nTopSP, topSPArray.get(),
+      bottomSPLinTransArray.get(), topSPLinTransArray.get(),
       middleBottomCountArray.get(), middleBottomArray.get(),
-      middleTopCountArray.get(), middleTopArray.get());
+      middleTopCountArray.get(), middleTopArray.get(), maxScatteringAngle2,
+      sigmaScattering, minHelixDiameter2, pT2perRadius, impactMax,
+      tripletCountDeviceArray.get(), tripletDeviceArray.get());
   ACTS_CUDA_ERROR_CHECK(cudaGetLastError());
   ACTS_CUDA_ERROR_CHECK(cudaDeviceSynchronize());
   return;

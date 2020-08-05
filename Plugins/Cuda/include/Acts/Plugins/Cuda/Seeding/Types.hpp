@@ -17,12 +17,10 @@ namespace details {
 
 /// Structure used in the CUDA-based triplet finding
 struct Triplet {
-  int bIndex;
-  int tIndex;
-  float topRadius;
-  float impactParameter;
-  float invHelixDiameter;
-  float weight;
+  std::size_t bottomIndex = 0;
+  std::size_t topIndex = 0;
+  float impactParameter = 0.0f;
+  float curvature = 0.0f;
 };  // struct Triplet
 
 /// Helper struct describing a spacepoint on the device
@@ -41,6 +39,7 @@ struct DubletCounts {
   int nTriplets = 0; ///< The total number of triplet candidates found
   int maxMBDublets = 0; ///< The maximal number of middle-bottom dublets
   int maxMTDublets = 0; ///< The maximal number of middle-top dublets
+  int maxTriplets = 0; ///< The maximal number of triplets for any middle SP
 }; // struct DubletCounts
 
 /// Helper struct holding the linearly transformed coordinates of spacepoints
