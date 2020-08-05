@@ -54,7 +54,6 @@ ResultScalar<T>::operator typename ResultScalar<T>::Variable_t() const {
   template class Acts::Cuda::ResultScalar<TYPE>
 
 // Instantiate the templated functions for all primitive types.
-INST_RSCALAR_FOR_TYPE(void*);
 INST_RSCALAR_FOR_TYPE(char);
 INST_RSCALAR_FOR_TYPE(unsigned char);
 INST_RSCALAR_FOR_TYPE(short);

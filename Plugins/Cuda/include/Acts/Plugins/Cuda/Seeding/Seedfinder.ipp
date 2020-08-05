@@ -72,63 +72,60 @@ Seedfinder<external_spacepoint_t>::createSeedsForGroup(
   };
 
   std::vector<const Acts::InternalSpacePoint<external_spacepoint_t>*>
-      bottomSPvec(spVecMaker(bottomSPs));
+      bottomSPVec(spVecMaker(bottomSPs));
   std::vector<const Acts::InternalSpacePoint<external_spacepoint_t>*>
-      middleSPvec(spVecMaker(middleSPs));
+      middleSPVec(spVecMaker(middleSPs));
   std::vector<const Acts::InternalSpacePoint<external_spacepoint_t>*>
-      topSPvec(spVecMaker(topSPs));
+      topSPVec(spVecMaker(topSPs));
 
   // If either one of them is empty, we have nothing to find.
-  if ((middleSPvec.size() == 0) || (bottomSPvec.size() == 0) ||
-      (topSPvec.size() == 0)) {
+  if ((middleSPVec.size() == 0) || (bottomSPVec.size() == 0) ||
+      (topSPVec.size() == 0)) {
     return outputVec;
   }
 
-  // Create helper objects for creating the memory describing the space points,
-  // here on the host.
-  HostMatrix<2, float> bottomSPHostMatrix({bottomSPvec.size(),
-                                           details::SP_DIMENSIONS});
-  HostMatrix<2, float> middleSPHostMatrix({middleSPvec.size(),
-                                           details::SP_DIMENSIONS});
-  HostMatrix<2, float> topSPHostMatrix({topSPvec.size(),
-                                        details::SP_DIMENSIONS});
+  // Create helper objects for storing information about the spacepoints on the
+  // host in single memory blobs.
+  auto bottomSPArray = make_host_array<details::SpacePoint>(bottomSPVec.size());
+  auto middleSPArray = make_host_array<details::SpacePoint>(middleSPVec.size());
+  auto topSPArray = make_host_array<details::SpacePoint>(topSPVec.size());
 
-  // Fill them with information coming from the Acts space point objects.
-  auto fillSPMatrix = [](auto& matrix, const auto& spVec) {
+  // Fill these memory blobs.
+  auto fillSPArray = [](details::SpacePoint* array, const auto& spVec) {
     for (std::size_t i = 0; i < spVec.size(); ++i) {
-      matrix.set({i, details::SP_X_INDEX}, spVec[i]->x());
-      matrix.set({i, details::SP_Y_INDEX}, spVec[i]->y());
-      matrix.set({i, details::SP_Z_INDEX}, spVec[i]->z());
-      matrix.set({i, details::SP_R_INDEX}, spVec[i]->radius());
-      matrix.set({i, details::SP_VR_INDEX}, spVec[i]->varianceR());
-      matrix.set({i, details::SP_VZ_INDEX}, spVec[i]->varianceZ());
+      array[i].x = spVec[i]->x();
+      array[i].y = spVec[i]->y();
+      array[i].z = spVec[i]->z();
+      array[i].radius = spVec[i]->radius();
+      array[i].varianceR = spVec[i]->varianceR();
+      array[i].varianceZ = spVec[i]->varianceZ();
     }
   };
-  fillSPMatrix(bottomSPHostMatrix, bottomSPvec);
-  fillSPMatrix(middleSPHostMatrix, middleSPvec);
-  fillSPMatrix(topSPHostMatrix, topSPvec);
+  fillSPArray(bottomSPArray.get(), bottomSPVec);
+  fillSPArray(middleSPArray.get(), middleSPVec);
+  fillSPArray(topSPArray.get(), topSPVec);
 
-  // Copy the memory blocks to the device.
-  auto bottomSPDeviceMatrix =
-    make_device_array<float>(bottomSPHostMatrix.totalSize());
-  auto middleSPDeviceMatrix =
-    make_device_array<float>(middleSPHostMatrix.totalSize());
-  auto topSPDeviceMatrix =
-    make_device_array<float>(topSPHostMatrix.totalSize());
-  bottomSPHostMatrix.copyTo(bottomSPDeviceMatrix);
-  middleSPHostMatrix.copyTo(middleSPDeviceMatrix);
-  topSPHostMatrix.copyTo(topSPDeviceMatrix);
+  // Copy the memory blobs to the device.
+  auto bottomSPDeviceArray =
+      make_device_array<details::SpacePoint>(bottomSPVec.size());
+  auto middleSPDeviceArray =
+      make_device_array<details::SpacePoint>(middleSPVec.size());
+  auto topSPDeviceArray =
+      make_device_array<details::SpacePoint>(topSPVec.size());
+  copyToDevice(bottomSPDeviceArray, bottomSPArray, bottomSPVec.size());
+  copyToDevice(middleSPDeviceArray, middleSPArray, middleSPVec.size());
+  copyToDevice(topSPDeviceArray, topSPArray, topSPVec.size());
 
   //---------------------------------
   // GPU Execution
   //---------------------------------
 
   // Matrices holding the viable bottom-middle and middle-top pairs.
-  HostMatrix<1, int> middleBottomCounts({middleSPvec.size()});
-  HostMatrix<1, int> middleTopCounts({middleSPvec.size()});
+  HostMatrix<1, int> middleBottomCounts({middleSPVec.size()});
+  HostMatrix<1, int> middleTopCounts({middleSPVec.size()});
 
   // Reset the values in the count vectors.
-  for (std::size_t i = 0; i < middleSPvec.size(); ++i) {
+  for (std::size_t i = 0; i < middleSPVec.size(); ++i) {
     middleBottomCounts.set({i}, 0);
     middleTopCounts.set({i}, 0);
   }
@@ -137,19 +134,19 @@ Seedfinder<external_spacepoint_t>::createSeedsForGroup(
   auto middleBottomCountArray =
       make_device_array<int>(middleBottomCounts.totalSize());
   auto middleBottomArray =
-      make_device_array<int>(middleSPvec.size() * bottomSPvec.size());
+      make_device_array<int>(middleSPVec.size() * bottomSPVec.size());
   auto middleTopCountArray =
       make_device_array<int>(middleTopCounts.totalSize());
   auto middleTopArray =
-      make_device_array<int>(middleSPvec.size() * topSPvec.size());
+      make_device_array<int>(middleSPVec.size() * topSPVec.size());
   middleBottomCounts.copyTo(middleBottomCountArray);
   middleTopCounts.copyTo(middleTopCountArray);
 
   // Launch the dublet finding code.
   details::findDublets(m_config.maxBlockSize,
-                       bottomSPvec.size(), bottomSPDeviceMatrix,
-                       middleSPvec.size(), middleSPDeviceMatrix,
-                       topSPvec.size(), topSPDeviceMatrix,
+                       bottomSPVec.size(), bottomSPDeviceArray,
+                       middleSPVec.size(), middleSPDeviceArray,
+                       topSPVec.size(), topSPDeviceArray,
                        m_config.deltaRMin, m_config.deltaRMax,
                        m_config.cotThetaMax, m_config.collisionRegionMin,
                        m_config.collisionRegionMax,
@@ -159,7 +156,7 @@ Seedfinder<external_spacepoint_t>::createSeedsForGroup(
   // Count the number of dublets that we have to launch the coordinate
   // transformation for.
   details::DubletCounts dubletCounts =
-      details::countDublets(m_config.maxBlockSize, middleSPvec.size(),
+      details::countDublets(m_config.maxBlockSize, middleSPVec.size(),
                             middleBottomCountArray, middleTopCountArray);
 
   // If no dublets have been found, stop here.
@@ -169,9 +166,9 @@ Seedfinder<external_spacepoint_t>::createSeedsForGroup(
 
   // Launch the triplet finding code on all of the previously found dublets.
   details::findTriplets(m_config.maxBlockSize, dubletCounts,
-                        bottomSPvec.size(), bottomSPDeviceMatrix,
-                        middleSPvec.size(), middleSPDeviceMatrix,
-                        topSPvec.size(), topSPDeviceMatrix,
+                        bottomSPVec.size(), bottomSPDeviceArray,
+                        middleSPVec.size(), middleSPDeviceArray,
+                        topSPVec.size(), topSPDeviceArray,
                         middleBottomCountArray, middleBottomArray,
                         middleTopCountArray, middleTopArray);
 

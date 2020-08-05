@@ -25,6 +25,16 @@ struct Triplet {
   float weight;
 };  // struct Triplet
 
+/// Helper struct describing a spacepoint on the device
+struct SpacePoint {
+  float x = 0.0f; ///< x-coordinate in beam system coordinates
+  float y = 0.0f; ///< y-coordinate in beam system coordinates
+  float z = 0.0f; ///< z-coordinate in beam system coordinates
+  float radius = 0.0f; ///< radius in beam system coordinates
+  float varianceR = 0.0f;
+  float varianceZ = 0.0f;
+};
+
 /// Helper struct summarising the results of the dublet search
 struct DubletCounts {
   int nDublets = 0; ///< The total number of dublets (M-B and M-T) found

@@ -70,8 +70,10 @@ __device__ float getCotTheta<TopSP>(float middleZ, float topZ, float deltaR) {
 }
 
 template<int SPType>
-__global__ void findDublets(std::size_t nMiddleSP, const float* middleSPArray,
-                            std::size_t nOtherSP, const float* otherSPArray,
+__global__ void findDublets(std::size_t nMiddleSP,
+                            const details::SpacePoint* middleSPArray,
+                            std::size_t nOtherSP,
+                            const details::SpacePoint* otherSPArray,
                             float deltaRMin, float deltaRMax, float cotThetaMax,
                             float collisionRegionMin, float collisionRegionMax,
                             int* compCountArray, int* compArray) {
@@ -85,29 +87,14 @@ __global__ void findDublets(std::size_t nMiddleSP, const float* middleSPArray,
     return;
   }
 
-  // Create helper objects on top of the arrays.
-  const std::size_t middleSPSize[] = {nMiddleSP, details::SP_DIMENSIONS};
-  DeviceMatrix<2, float> middleSPs(middleSPSize, middleSPArray);
-  const std::size_t otherSPSize[] = {nOtherSP, details::SP_DIMENSIONS};
-  DeviceMatrix<2, float> otherSPs(otherSPSize, otherSPArray);
-  const std::size_t compSize[] = {nMiddleSP, nOtherSP};
-  DeviceMatrix<2, int> compMatrix(compSize, compArray);
-
-  std::size_t middleRIndex[] = {middleIndex, details::SP_R_INDEX};
-  std::size_t middleZIndex[] = {middleIndex, details::SP_Z_INDEX};
-  std::size_t otherRIndex[] = {otherIndex, details::SP_R_INDEX};
-  std::size_t otherZIndex[] = {otherIndex, details::SP_Z_INDEX};
-
-  // Access the parameters of interest for the two space points.
-  const float middleR = middleSPs.get(middleRIndex);
-  const float middleZ = middleSPs.get(middleZIndex);
-  const float otherR = otherSPs.get(otherRIndex);
-  const float otherZ = otherSPs.get(otherZIndex);
-
   // Calculate variables used in the compatibility check.
-  const float deltaR = getDeltaR<SPType>(middleR, otherR);
-  const float cotTheta = getCotTheta<SPType>(middleZ, otherZ, deltaR);
-  const float zOrigin = middleZ - middleR * cotTheta;
+  const float deltaR = getDeltaR<SPType>(middleSPArray[middleIndex].radius,
+                                         otherSPArray[otherIndex].radius);
+  const float cotTheta = getCotTheta<SPType>(middleSPArray[middleIndex].z,
+                                             otherSPArray[otherIndex].z,
+                                             deltaR);
+  const float zOrigin = middleSPArray[middleIndex].z -
+      middleSPArray[middleIndex].radius * cotTheta;
 
   // Perform the compatibility check.
   const bool isCompatible = ((deltaR >= deltaRMin) && (deltaR <= deltaRMax) &&
@@ -117,6 +104,8 @@ __global__ void findDublets(std::size_t nMiddleSP, const float* middleSPArray,
 
   // If they are compatible, save their indices into the output matrix.
   if (isCompatible) {
+    const std::size_t compSize[] = {nMiddleSP, nOtherSP};
+    DeviceMatrix<2, int> compMatrix(compSize, compArray);
     const int compRow = atomicAdd(compCountArray + middleIndex, 1);
     std::size_t compIndex[] = {middleIndex,
                                static_cast<std::size_t>(compRow)};
@@ -187,11 +176,11 @@ namespace details {
 
 void findDublets(std::size_t maxBlockSize,
                  std::size_t nBottomSP,
-                 const device_array<float>& bottomSPDeviceMatrix,
+                 const device_array<SpacePoint>& bottomSPArray,
                  std::size_t nMiddleSP,
-                 const device_array<float>& middleSPDeviceMatrix,
+                 const device_array<SpacePoint>& middleSPArray,
                  std::size_t nTopSP,
-                 const device_array<float>& topSPDeviceMatrix,
+                 const device_array<SpacePoint>& topSPArray,
                  float deltaRMin, float deltaRMax,
                  float cotThetaMax, float collisionRegionMin,
                  float collisionRegionMax,
@@ -208,8 +197,8 @@ void findDublets(std::size_t maxBlockSize,
 
   // Launch the middle-bottom dublet finding.
   kernels::findDublets<BottomSP><<<numBlocksMB, blockSizeMB>>>(
-      nMiddleSP, middleSPDeviceMatrix.get(),
-      nBottomSP, bottomSPDeviceMatrix.get(),
+      nMiddleSP, middleSPArray.get(),
+      nBottomSP, bottomSPArray.get(),
       deltaRMin, deltaRMax, cotThetaMax, collisionRegionMin, collisionRegionMax,
       middleBottomCountArray.get(), middleBottomArray.get());
   ACTS_CUDA_ERROR_CHECK(cudaGetLastError());
@@ -222,8 +211,8 @@ void findDublets(std::size_t maxBlockSize,
 
   // Launch the middle-bottom dublet finding.
   kernels::findDublets<TopSP><<<numBlocksMT, blockSizeMT>>>(
-      nMiddleSP, middleSPDeviceMatrix.get(),
-      nTopSP, topSPDeviceMatrix.get(),
+      nMiddleSP, middleSPArray.get(),
+      nTopSP, topSPArray.get(),
       deltaRMin, deltaRMax, cotThetaMax, collisionRegionMin, collisionRegionMax,
       middleTopCountArray.get(), middleTopArray.get());
   ACTS_CUDA_ERROR_CHECK(cudaGetLastError());

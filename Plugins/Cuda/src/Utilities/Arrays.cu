@@ -86,6 +86,22 @@ host_array<T> make_host_array(std::size_t size) {
   return host_array<T>(ptr);
 }
 
+template <typename T>
+void copyToDevice(device_array<T>& dev, const host_array<T>& host,
+                  std::size_t arraySize) {
+  ACTS_CUDA_ERROR_CHECK(cudaMemcpy(dev.get(), host.get(), arraySize * sizeof(T),
+                                   cudaMemcpyHostToDevice));
+  return;
+}
+
+template <typename T>
+void copyToHost(host_array<T>& host, const device_array<T>& dev,
+                std::size_t arraySize) {
+  ACTS_CUDA_ERROR_CHECK(cudaMemcpy(host.get(), dev.get(), arraySize * sizeof(T),
+                                   cudaMemcpyDeviceToHost));
+  return;
+}
+
 }  // namespace Cuda
 }  // namespace Acts
 
@@ -106,10 +122,19 @@ host_array<T> make_host_array(std::size_t size) {
       Acts::Cuda::make_device_array<TYPE>(std::size_t);                        \
   template class std::unique_ptr<TYPE, Acts::Cuda::details::HostArrayDeleter>; \
   template std::unique_ptr<TYPE, Acts::Cuda::details::HostArrayDeleter>        \
-      Acts::Cuda::make_host_array<TYPE>(std::size_t)
+      Acts::Cuda::make_host_array<TYPE>(std::size_t);                          \
+  template void                                                                \
+  Acts::Cuda::copyToDevice<TYPE>(std::unique_ptr<TYPE,                         \
+      Acts::Cuda::details::DeviceArrayDeleter>&,                               \
+      const std::unique_ptr<TYPE, Acts::Cuda::details::HostArrayDeleter>&,     \
+      std::size_t);                                                            \
+  template void                                                                \
+  Acts::Cuda::copyToHost<TYPE>(std::unique_ptr<TYPE,                           \
+      Acts::Cuda::details::HostArrayDeleter>&,                                 \
+      const std::unique_ptr<TYPE, Acts::Cuda::details::DeviceArrayDeleter>&,   \
+      std::size_t)
 
 // Instantiate the templated functions for all primitive types.
-INST_ARRAY_FOR_TYPE(void*);
 INST_ARRAY_FOR_TYPE(char);
 INST_ARRAY_FOR_TYPE(unsigned char);
 INST_ARRAY_FOR_TYPE(short);
@@ -124,7 +149,7 @@ INST_ARRAY_FOR_TYPE(float);
 INST_ARRAY_FOR_TYPE(double);
 
 // Instantiate them for any necessary custom type(s) as well.
-INST_ARRAY_FOR_TYPE(Acts::Cuda::details::Triplet);
+INST_ARRAY_FOR_TYPE(Acts::Cuda::details::SpacePoint);
 INST_ARRAY_FOR_TYPE(Acts::Cuda::details::DubletCounts);
 
 // Clean up.

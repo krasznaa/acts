@@ -26,9 +26,12 @@ namespace Cuda {
 namespace kernels {
 
 __global__ void findTriplets(int nTripletCandidates,
-                             std::size_t nBottomSP, const float* bottomSPArray,
-                             std::size_t nMiddleSP, const float* middleSPArray,
-                             std::size_t nTopSP, const float* topSPArray,
+                             std::size_t nBottomSP,
+                             const details::SpacePoint* bottomSPArray,
+                             std::size_t nMiddleSP,
+                             const details::SpacePoint* middleSPArray,
+                             std::size_t nTopSP,
+                             const details::SpacePoint* topSPArray,
                              const int* middleBottomCountArray,
                              const int* middleBottomArray,
                              const int* middleTopCountArray,
@@ -41,14 +44,6 @@ __global__ void findTriplets(int nTripletCandidates,
   if (tripletIndex >= nTripletCandidates) {
     return;
   }
-
-  // Create helper objects on top of the spacepoint arrays.
-  const std::size_t bottomSPSize[] = {nBottomSP, details::SP_DIMENSIONS};
-  DeviceMatrix<2, float> bottomSPs(bottomSPSize, bottomSPArray);
-  const std::size_t middleSPSize[] = {nMiddleSP, details::SP_DIMENSIONS};
-  DeviceMatrix<2, float> middleSPs(middleSPSize, middleSPArray);
-  const std::size_t topSPSize[] = {nTopSP, details::SP_DIMENSIONS};
-  DeviceMatrix<2, float> topSPs(topSPSize, topSPArray);
 
   // Create helper objects on top of the dublet matrices.
   const std::size_t middleBottomMatrixSize[] = {nMiddleSP, nBottomSP};
@@ -80,19 +75,12 @@ __global__ void findTriplets(int nTripletCandidates,
   assert(topIndex < nTopSP);
 
   // Extract the properties of the selected spacepoints.
-  std::size_t middleXIndex[] = {middleIndex, details::SP_X_INDEX};
-  std::size_t middleYIndex[] = {middleIndex, details::SP_Y_INDEX};
-  std::size_t middleZIndex[] = {middleIndex, details::SP_Z_INDEX};
-  std::size_t middleRIndex[] = {middleIndex, details::SP_R_INDEX};
-  std::size_t middleVZIndex[] = {middleIndex, details::SP_VZ_INDEX};
-  std::size_t middleVRIndex[] = {middleIndex, details::SP_VR_INDEX};
-
-  float xM = middleSPs.get(middleXIndex);
-  float yM = middleSPs.get(middleYIndex);
-  float zM = middleSPs.get(middleZIndex);
-  float rM = middleSPs.get(middleRIndex);
-  float varianceZM = middleSPs.get(middleVZIndex);
-  float varianceRM = middleSPs.get(middleVRIndex);
+  float xM = middleSPArray[middleIndex].x;
+  float yM = middleSPArray[middleIndex].y;
+  float zM = middleSPArray[middleIndex].z;
+  float rM = middleSPArray[middleIndex].radius;
+  float varianceZM = middleSPArray[middleIndex].varianceZ;
+  float varianceRM = middleSPArray[middleIndex].varianceR;
   float cosPhiM = xM / rM;
   float sinPhiM = yM / rM;
 
@@ -105,24 +93,28 @@ namespace details {
 
 void findTriplets(int maxBlockSize, const DubletCounts& dubletCounts,
                   std::size_t nBottomSP,
-                  const device_array<float>& bottomSPDeviceMatrix,
+                  const device_array<SpacePoint>& bottomSPArray,
                   std::size_t nMiddleSP,
-                  const device_array<float>& middleSPDeviceMatrix,
+                  const device_array<SpacePoint>& middleSPArray,
                   std::size_t nTopSP,
-                  const device_array<float>& topSPDeviceMatrix,
+                  const device_array<SpacePoint>& topSPArray,
                   const device_array<int>& middleBottomCountArray,
                   const device_array<int>& middleBottomArray,
                   const device_array<int>& middleTopCountArray,
                   const device_array<int>& middleTopArray) {
 
+  // Calculate the parallelisation for the parameter transformation.
+  const int numBlocksLT =
+      (dubletCounts.nDublets + maxBlockSize - 1) / maxBlockSize;
+
   // Calculate the parallelisation for the triplet finding.
-  const int numBlocks =
+  const int numBlocksFT =
       (dubletCounts.nTriplets + maxBlockSize - 1) / maxBlockSize;
 
   // Launch the triplet finding.
-  kernels::findTriplets<<<numBlocks, maxBlockSize>>>(
-      dubletCounts.nTriplets, nBottomSP, bottomSPDeviceMatrix.get(), nMiddleSP,
-      middleSPDeviceMatrix.get(), nTopSP, topSPDeviceMatrix.get(),
+  kernels::findTriplets<<<numBlocksFT, maxBlockSize>>>(
+      dubletCounts.nTriplets, nBottomSP, bottomSPArray.get(), nMiddleSP,
+      middleSPArray.get(), nTopSP, topSPArray.get(),
       middleBottomCountArray.get(), middleBottomArray.get(),
       middleTopCountArray.get(), middleTopArray.get());
   ACTS_CUDA_ERROR_CHECK(cudaGetLastError());
