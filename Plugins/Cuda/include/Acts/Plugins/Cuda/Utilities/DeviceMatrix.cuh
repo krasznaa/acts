@@ -52,12 +52,15 @@ class DeviceMatrix {
   __device__
   const_pointer data() const;
 
-  /// Get one element of the matrix
+  /// Get one element of the matrix (const)
   __device__
-  Type get(std::size_t i[DIMENSIONS]) const;
+  const Type& get(std::size_t i[DIMENSIONS]) const;
+  /// Get one element of the matrix (non-const)
+  __device__
+  Type& getNC(std::size_t i[DIMENSIONS]);
   /// Set one element of the matrix
   __device__
-  void set(std::size_t i[DIMENSIONS], Type value);
+  void set(std::size_t i[DIMENSIONS], const Type& value);
 
  private:
   /// The size of the matrix in memory

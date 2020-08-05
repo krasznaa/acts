@@ -151,14 +151,22 @@ DeviceMatrix<DIM, T>::data() const {
 
 template<std::size_t DIM, typename T>
 __device__
-typename DeviceMatrix<DIM, T>::Type DeviceMatrix<DIM, T>::get(
+const typename DeviceMatrix<DIM, T>::Type& DeviceMatrix<DIM, T>::get(
     std::size_t i[DIMENSIONS]) const {
   return m_array[::ElementPosition<DIMENSIONS>::get(m_size, i)];
 }
 
 template<std::size_t DIM, typename T>
 __device__
-void DeviceMatrix<DIM, T>::set(std::size_t i[DIMENSIONS], Type value) {
+typename DeviceMatrix<DIM, T>::Type& DeviceMatrix<DIM, T>::getNC(
+    std::size_t i[DIMENSIONS]) {
+  assert(m_ncArray == m_array);
+  return m_ncArray[::ElementPosition<DIMENSIONS>::get(m_size, i)];
+}
+
+template<std::size_t DIM, typename T>
+__device__
+void DeviceMatrix<DIM, T>::set(std::size_t i[DIMENSIONS], const Type& value) {
   assert(m_ncArray == m_array);
   m_ncArray[::ElementPosition<DIMENSIONS>::get(m_size, i)] = value;
   return;

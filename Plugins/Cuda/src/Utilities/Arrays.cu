@@ -151,6 +151,7 @@ INST_ARRAY_FOR_TYPE(double);
 // Instantiate them for any necessary custom type(s) as well.
 INST_ARRAY_FOR_TYPE(Acts::Cuda::details::SpacePoint);
 INST_ARRAY_FOR_TYPE(Acts::Cuda::details::DubletCounts);
+INST_ARRAY_FOR_TYPE(Acts::Cuda::details::LinCircle);
 
 // Clean up.
 #undef INST_ARRAY_FOR_TYPE

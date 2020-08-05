@@ -153,14 +153,14 @@ Seedfinder<external_spacepoint_t>::createSeedsForGroup(
                        middleBottomCountArray, middleBottomArray,
                        middleTopCountArray, middleTopArray);
 
-  // Count the number of dublets that we have to launch the coordinate
-  // transformation for.
+  // Count the number of dublets that we have to launch the subsequent steps
+  // for.
   details::DubletCounts dubletCounts =
       details::countDublets(m_config.maxBlockSize, middleSPVec.size(),
                             middleBottomCountArray, middleTopCountArray);
 
-  // If no dublets have been found, stop here.
-  if (dubletCounts.nTriplets == 0) {
+  // If no dublets/triplet candidates have been found, stop here.
+  if ((dubletCounts.nDublets == 0) || (dubletCounts.nTriplets == 0)) {
     return outputVec;
   }
 
