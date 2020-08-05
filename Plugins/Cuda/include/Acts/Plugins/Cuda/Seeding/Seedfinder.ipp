@@ -156,19 +156,19 @@ Seedfinder<external_spacepoint_t>::createSeedsForGroup(
                        middleBottomCountArray, middleBottomArray,
                        middleTopCountArray, middleTopArray);
 
-  // Count the number of triplet candidate we will have to evaluate, on the
-  // device.
-  const int nTripletCandidates =
-      details::countTriplets(m_config.maxBlockSize, middleSPvec.size(),
-                             middleBottomCountArray, middleTopCountArray);
+  // Count the number of dublets that we have to launch the coordinate
+  // transformation for.
+  details::DubletCounts dubletCounts =
+      details::countDublets(m_config.maxBlockSize, middleSPvec.size(),
+                            middleBottomCountArray, middleTopCountArray);
 
-  // If no triplet candidates have been found, stop here.
-  if (nTripletCandidates == 0) {
+  // If no dublets have been found, stop here.
+  if (dubletCounts.nTriplets == 0) {
     return outputVec;
   }
 
   // Launch the triplet finding code on all of the previously found dublets.
-  details::findTriplets(m_config.maxBlockSize, nTripletCandidates,
+  details::findTriplets(m_config.maxBlockSize, dubletCounts,
                         bottomSPvec.size(), bottomSPDeviceMatrix,
                         middleSPvec.size(), middleSPDeviceMatrix,
                         topSPvec.size(), topSPDeviceMatrix,

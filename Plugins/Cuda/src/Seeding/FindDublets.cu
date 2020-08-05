@@ -125,6 +125,62 @@ __global__ void findDublets(std::size_t nMiddleSP, const float* middleSPArray,
   return;
 }
 
+__global__ void countDublets(std::size_t nMiddleSP,
+                             const int* middleBottomCountArray,
+                             const int* middleTopCountArray,
+                             details::DubletCounts* dubletCounts) {
+
+  extern __shared__ details::DubletCounts sum[];
+
+  // Get the thread identifier. Note that the kernel launch requests half as
+  // many threads than how many elements we have in the arrays.
+  const int middleIndex = blockIdx.x * blockDim.x * 2 + threadIdx.x;
+  details::DubletCounts thisSum;
+  thisSum.nDublets = ((middleIndex < nMiddleSP) ?
+                      middleBottomCountArray[middleIndex] +
+                      middleTopCountArray[middleIndex] : 0);
+  thisSum.nTriplets = ((middleIndex < nMiddleSP) ?
+                       middleBottomCountArray[middleIndex] *
+                       middleTopCountArray[middleIndex] : 0);
+  thisSum.maxMBDublets = ((middleIndex < nMiddleSP) ?
+                          middleBottomCountArray[middleIndex] : 0);
+  thisSum.maxMTDublets = ((middleIndex < nMiddleSP) ?
+                          middleTopCountArray[middleIndex] : 0);
+  if (middleIndex + blockDim.x < nMiddleSP) {
+    thisSum.nDublets += (middleBottomCountArray[middleIndex + blockDim.x] +
+                         middleTopCountArray[middleIndex + blockDim.x]);
+    thisSum.nTriplets += (middleBottomCountArray[middleIndex + blockDim.x] *
+                          middleTopCountArray[middleIndex + blockDim.x]);
+    thisSum.maxMBDublets = max(middleBottomCountArray[middleIndex + blockDim.x],
+                               thisSum.maxMBDublets);
+    thisSum.maxMTDublets = max(middleTopCountArray[middleIndex + blockDim.x],
+                               thisSum.maxMTDublets);
+  }
+
+  // Load the first sum step into shared memory.
+  sum[threadIdx.x] = thisSum;
+  __syncthreads();
+
+  // Do the summation in some iterations.
+  for (unsigned int i = blockDim.x / 2; i > 0; i>>=1) {
+    if (threadIdx.x < i) {
+      const details::DubletCounts& otherSum = sum[threadIdx.x + i];
+      thisSum.nDublets += otherSum.nDublets;
+      thisSum.nTriplets += otherSum.nTriplets;
+      thisSum.maxMBDublets = max(thisSum.maxMBDublets, otherSum.maxMBDublets);
+      thisSum.maxMTDublets = max(thisSum.maxMTDublets, otherSum.maxMTDublets);
+      sum[threadIdx.x] = thisSum;
+    }
+    __syncthreads();
+  }
+
+  // Write the result of this execution block into the global memory.
+  if (threadIdx.x == 0) {
+    dubletCounts[blockIdx.x] = thisSum;
+  }
+  return;
+}
+
 }  // namespace kernels
 
 namespace details {
@@ -173,6 +229,47 @@ void findDublets(std::size_t maxBlockSize,
   ACTS_CUDA_ERROR_CHECK(cudaGetLastError());
   ACTS_CUDA_ERROR_CHECK(cudaDeviceSynchronize());
   return;
+}
+
+DubletCounts countDublets(std::size_t maxBlockSize, std::size_t nMiddleSP,
+                          const device_array<int>& middleBottomCountArray,
+                          const device_array<int>& middleTopCountArray) {
+
+  // Calculate the parallelisation for the dublet counting.
+  const int numBlocks = (nMiddleSP + maxBlockSize - 1) / maxBlockSize;
+  const int sharedMem = maxBlockSize * sizeof(DubletCounts);
+
+  // Create the small memory block in which we will get the count back for each
+  // execution block.
+  auto dubletCountsDevice = make_device_array<DubletCounts>(numBlocks);
+
+  // Run the reduction kernel.
+  kernels::countDublets<<<numBlocks, maxBlockSize, sharedMem>>>(
+      nMiddleSP, middleBottomCountArray.get(), middleTopCountArray.get(),
+      dubletCountsDevice.get());
+  ACTS_CUDA_ERROR_CHECK(cudaGetLastError());
+  ACTS_CUDA_ERROR_CHECK(cudaDeviceSynchronize());
+
+  // Copy the sum(s) back to the host.
+  auto dubletCountsHost = make_host_array<DubletCounts>(numBlocks);
+  ACTS_CUDA_ERROR_CHECK(cudaMemcpy(dubletCountsHost.get(),
+                                   dubletCountsDevice.get(),
+                                   numBlocks * sizeof(DubletCounts),
+                                   cudaMemcpyDeviceToHost));
+
+  // Perform the final summation on the host. (Assuming that the number of
+  // middle space points is not so large that it would make sense to do the
+  // summation iteratively on the device.)
+  DubletCounts result;
+  for (int i = 0; i < numBlocks; ++i) {
+    result.nDublets += dubletCountsHost.get()[i].nDublets;
+    result.nTriplets += dubletCountsHost.get()[i].nTriplets;
+    result.maxMBDublets = std::max(dubletCountsHost.get()[i].maxMBDublets,
+                                   result.maxMBDublets);
+    result.maxMTDublets = std::max(dubletCountsHost.get()[i].maxMTDublets,
+                                   result.maxMTDublets);
+  }
+  return result;
 }
 
 }  // namespace details

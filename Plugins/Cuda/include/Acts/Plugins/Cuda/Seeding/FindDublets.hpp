@@ -9,6 +9,7 @@
 #pragma once
 
 // CUDA plugin include(s).
+#include "Acts/Plugins/Cuda/Seeding/Types.hpp"
 #include "Acts/Plugins/Cuda/Utilities/Arrays.hpp"
 
 // System include(s).
@@ -18,6 +19,7 @@ namespace Acts {
 namespace Cuda {
 namespace details {
 
+/// Find all viable middle-bottom and middle-top dublets
 void findDublets(std::size_t maxBlockSize,
                  std::size_t nBottomSP,
                  const device_array<float>& bottomSPDeviceMatrix,
@@ -32,6 +34,11 @@ void findDublets(std::size_t maxBlockSize,
                  device_array<int>& middleBottomArray,
                  device_array<int>& middleTopCountArray,
                  device_array<int>& middleTopArray);
+
+/// Create some summary values for the dublet search
+DubletCounts countDublets(std::size_t maxBlockSize, std::size_t nMiddleSP,
+                          const device_array<int>& middleBottomCountArray,
+                          const device_array<int>& middleTopCountArray);
 
 }  // namespace details
 }  // namespace Cuda

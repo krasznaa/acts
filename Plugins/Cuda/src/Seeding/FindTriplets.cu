@@ -25,43 +25,6 @@ namespace Acts {
 namespace Cuda {
 namespace kernels {
 
-__global__ void countTriplets(std::size_t nMiddleSP,
-                              const int* middleBottomCountArray,
-                              const int* middleTopCountArray,
-                              int* tripletCounts) {
-
-  extern __shared__ int sum[];
-
-  // Get the thread identifier. Note that the kernel launch requests half as
-  // many threads than how many elements we have in the arrays.
-  const int middleIndex = blockIdx.x * blockDim.x * 2 + threadIdx.x;
-  int thisSum = ((middleIndex < nMiddleSP) ?
-                 middleBottomCountArray[middleIndex] *
-                 middleTopCountArray[middleIndex] : 0);
-  if (middleIndex + blockDim.x < nMiddleSP) {
-    thisSum += (middleBottomCountArray[middleIndex + blockDim.x] *
-                middleTopCountArray[middleIndex + blockDim.x]);
-  }
-
-  // Load the first sum step into shared memory.
-  sum[threadIdx.x] = thisSum;
-  __syncthreads();
-
-  // Do the summation in some iterations.
-  for (unsigned int i = blockDim.x / 2; i > 0; i>>=1) {
-    if (threadIdx.x < i) {
-      sum[threadIdx.x] = thisSum = thisSum + sum[threadIdx.x + i];
-    }
-    __syncthreads();
-  }
-
-  // Write the result of this execution block into the global memory.
-  if (threadIdx.x == 0) {
-    tripletCounts[blockIdx.x] = thisSum;
-  }
-  return;
-}
-
 __global__ void findTriplets(int nTripletCandidates,
                              std::size_t nBottomSP, const float* bottomSPArray,
                              std::size_t nMiddleSP, const float* middleSPArray,
@@ -105,7 +68,8 @@ __global__ void findTriplets(int nTripletCandidates,
     middleIndex += 1;
     runningIndex -= tmpValue;
   }
-  std::size_t bottomMatrixIndex = runningIndex / middleTopCountArray[middleIndex];
+  std::size_t bottomMatrixIndex =
+    runningIndex / middleTopCountArray[middleIndex];
   assert(bottomMatrixIndex < middleBottomCountArray[middleIndex]);
   std::size_t topMatrixIndex = runningIndex % middleTopCountArray[middleIndex];
   std::size_t middleBottomMatrixIndex[] = {middleIndex, bottomMatrixIndex};
@@ -115,6 +79,23 @@ __global__ void findTriplets(int nTripletCandidates,
   std::size_t topIndex = middleTopMatrix.get(middleTopMatrixIndex);
   assert(topIndex < nTopSP);
 
+  // Extract the properties of the selected spacepoints.
+  std::size_t middleXIndex[] = {middleIndex, details::SP_X_INDEX};
+  std::size_t middleYIndex[] = {middleIndex, details::SP_Y_INDEX};
+  std::size_t middleZIndex[] = {middleIndex, details::SP_Z_INDEX};
+  std::size_t middleRIndex[] = {middleIndex, details::SP_R_INDEX};
+  std::size_t middleVZIndex[] = {middleIndex, details::SP_VZ_INDEX};
+  std::size_t middleVRIndex[] = {middleIndex, details::SP_VR_INDEX};
+
+  float xM = middleSPs.get(middleXIndex);
+  float yM = middleSPs.get(middleYIndex);
+  float zM = middleSPs.get(middleZIndex);
+  float rM = middleSPs.get(middleRIndex);
+  float varianceZM = middleSPs.get(middleVZIndex);
+  float varianceRM = middleSPs.get(middleVRIndex);
+  float cosPhiM = xM / rM;
+  float sinPhiM = yM / rM;
+
   return;
 }
 
@@ -122,43 +103,7 @@ __global__ void findTriplets(int nTripletCandidates,
 
 namespace details {
 
-int countTriplets(int maxBlockSize, std::size_t nMiddleSP,
-                  const device_array<int>& middleBottomCountArray,
-                  const device_array<int>& middleTopCountArray) {
-
-  // Calculate the parallelisation for the triplet finding.
-  const int numBlocks = (nMiddleSP + maxBlockSize - 1) / maxBlockSize;
-  const int sharedMem = maxBlockSize * sizeof(int);
-
-  // Create the small memory block in which we will get the count back for each
-  // execution block.
-  auto tripletCountsDevice = make_device_array<int>(numBlocks);
-
-  // Run the reduction kernel.
-  kernels::countTriplets<<<numBlocks, maxBlockSize, sharedMem>>>(
-      nMiddleSP, middleBottomCountArray.get(), middleTopCountArray.get(),
-      tripletCountsDevice.get());
-  ACTS_CUDA_ERROR_CHECK(cudaGetLastError());
-  ACTS_CUDA_ERROR_CHECK(cudaDeviceSynchronize());
-
-  // Copy the sum(s) back to the host.
-  auto tripletCountsHost = make_host_array<int>(numBlocks);
-  ACTS_CUDA_ERROR_CHECK(cudaMemcpy(tripletCountsHost.get(),
-                                   tripletCountsDevice.get(),
-                                   numBlocks * sizeof(int),
-                                   cudaMemcpyDeviceToHost));
-
-  // Perform the final summation on the host. (Assuming that the number of
-  // middle space points is not so large that it would make sense to do the
-  // summation iteratively on the device.)
-  int result = 0;
-  for (int i = 0; i < numBlocks; ++i) {
-    result += tripletCountsHost.get()[i];
-  }
-  return result;
-}
-
-void findTriplets(int maxBlockSize, int nTripletCandidates,
+void findTriplets(int maxBlockSize, const DubletCounts& dubletCounts,
                   std::size_t nBottomSP,
                   const device_array<float>& bottomSPDeviceMatrix,
                   std::size_t nMiddleSP,
@@ -171,11 +116,12 @@ void findTriplets(int maxBlockSize, int nTripletCandidates,
                   const device_array<int>& middleTopArray) {
 
   // Calculate the parallelisation for the triplet finding.
-  const int numBlocks = (nTripletCandidates + maxBlockSize - 1) / maxBlockSize;
+  const int numBlocks =
+      (dubletCounts.nTriplets + maxBlockSize - 1) / maxBlockSize;
 
   // Launch the triplet finding.
   kernels::findTriplets<<<numBlocks, maxBlockSize>>>(
-      nTripletCandidates, nBottomSP, bottomSPDeviceMatrix.get(), nMiddleSP,
+      dubletCounts.nTriplets, nBottomSP, bottomSPDeviceMatrix.get(), nMiddleSP,
       middleSPDeviceMatrix.get(), nTopSP, topSPDeviceMatrix.get(),
       middleBottomCountArray.get(), middleBottomArray.get(),
       middleTopCountArray.get(), middleTopArray.get());

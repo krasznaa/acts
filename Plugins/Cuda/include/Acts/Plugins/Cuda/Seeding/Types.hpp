@@ -25,6 +25,14 @@ struct Triplet {
   float weight;
 };  // struct Triplet
 
+/// Helper struct summarising the results of the dublet search
+struct DubletCounts {
+  int nDublets = 0; ///< The total number of dublets (M-B and M-T) found
+  int nTriplets = 0; ///< The total number of triplet candidates found
+  int maxMBDublets = 0; ///< The maximal number of middle-bottom dublets
+  int maxMTDublets = 0; ///< The maximal number of middle-top dublets
+}; // struct DubletCounts
+
 /// Number of variables stored in the internal matrices per spacepoint
 static constexpr std::size_t SP_DIMENSIONS = 6;
 /// Index of the spacepoint X coordinates in the internal matrices
@@ -39,6 +47,16 @@ static constexpr std::size_t SP_R_INDEX = 3;
 static constexpr std::size_t SP_VR_INDEX = 4;
 /// Index of the spacepoint Z-variance coordinates in the internal matrices
 static constexpr std::size_t SP_VZ_INDEX = 5;
+
+/// Number of linearly transformed variables stored in the internal matrices per
+/// spacepoint
+static constexpr std::size_t LC_DIMENSIONS = 6;
+static constexpr std::size_t LC_ZO_INDEX = 0;
+static constexpr std::size_t LC_CT_INDEX = 1;
+static constexpr std::size_t LC_DR_INDEX = 2;
+static constexpr std::size_t LC_ER_INDEX = 3;
+static constexpr std::size_t LC_U_INDEX = 4;
+static constexpr std::size_t LC_V_INDEX = 5;
 
 }  // namespace details
 }  // namespace Cuda
