@@ -14,6 +14,8 @@
 
 // CUDA include(s).
 #include <cuda_runtime.h>
+#include <thrust/memory.h>
+#include <thrust/sort.h>
 
 // System include(s).
 #include <cassert>
@@ -242,9 +244,13 @@ __global__ void findTriplets(
   }
 
   // Get the indices of the spacepoints to operate on.
-  const std::size_t bottomIndex = middleBottomArray[bottomDubletIndex];
+  const std::size_t bottomIndex =
+    ACTS_CUDA_MATRIX2D_ELEMENT(middleBottomArray, nMiddleSP, nBottomSP,
+                               middleIndex, bottomDubletIndex);
   assert(bottomIndex < nBottomSP);
-  const std::size_t topIndex = middleTopArray[topDubletIndex];
+  const std::size_t topIndex =
+    ACTS_CUDA_MATRIX2D_ELEMENT(middleTopArray, nMiddleSP, nTopSP,
+                               middleIndex, topDubletIndex);
   assert(topIndex < nTopSP);
 
   // Load the transformed coordinates of the bottom spacepoint into the thread.
@@ -546,7 +552,7 @@ __global__ void filterTriplets2Sp(
 
 namespace details {
 
-void findTriplets(int maxBlockSize, const DubletCounts& dubletCounts,
+void findTriplets(ISeedCollector& sc, int maxBlockSize, const DubletCounts& dubletCounts,
                   std::size_t nBottomSP,
                   const device_array<SpacePoint>& bottomSPArray,
                   std::size_t nMiddleSP,
@@ -597,9 +603,8 @@ void findTriplets(int maxBlockSize, const DubletCounts& dubletCounts,
   enum ObjectCountType : int {
     AllTriplets = 0, ///< All viable triplets
     FilteredTriplets = 1, ///< Triplets after the "2SpFixed" filtering
-    FinalTriplets = 2, ///< Triplets after the "1SpFixed" filtering
-    MaxTripletsPerSpB = 3, ///< Maximal number of triplets found per SpB
-    NObjectCountTypes = 4 ///< The number of different object/counter types
+    MaxTripletsPerSpB = 2, ///< Maximal number of triplets found per SpB
+    NObjectCountTypes = 3 ///< The number of different object/counter types
   };
 
   // Set up the object counters in device memory. The host array is only used to
@@ -612,7 +617,7 @@ void findTriplets(int maxBlockSize, const DubletCounts& dubletCounts,
   // middle spacepoint.
   auto allTripletsArray = make_device_array<Triplet>(maxTriplets);
   auto filteredTripletsArray = make_device_array<Triplet>(maxTriplets);
-  auto finalTripletsArray = make_device_array<Triplet>(maxTriplets);
+  auto filteredTripletsHost = make_host_array<Triplet>(maxTriplets);
 
   // Allocate and initialise the array holding the per bottom dublet triplet
   // numbers.
@@ -628,9 +633,6 @@ void findTriplets(int maxBlockSize, const DubletCounts& dubletCounts,
   auto tripletIndices =
       make_device_array<std::size_t>(dubletCounts.maxMBDublets *
                                      dubletCounts.maxMTDublets);
-
-  int allTriplets = 0, filteredTriplets = 0;
-  auto objectCountsHost = make_host_array<int>(NObjectCountTypes);
 
   // Execute the triplet finding and filtering separately for each middle
   // spacepoint.
@@ -683,9 +685,6 @@ void findTriplets(int maxBlockSize, const DubletCounts& dubletCounts,
     ACTS_CUDA_ERROR_CHECK(cudaGetLastError());
     ACTS_CUDA_ERROR_CHECK(cudaDeviceSynchronize());
 
-    copyToHost(objectCountsHost, objectCountsDevice, NObjectCountTypes);
-    allTriplets += objectCountsHost.get()[AllTriplets];
-
     // Retrieve the maximal number of triplets found for any given bottom-middle
     // dublet.
     int maxTripletsPerSpB = 0;
@@ -726,91 +725,22 @@ void findTriplets(int maxBlockSize, const DubletCounts& dubletCounts,
     ACTS_CUDA_ERROR_CHECK(cudaGetLastError());
     ACTS_CUDA_ERROR_CHECK(cudaDeviceSynchronize());
 
+    // Retrieve the filtered number of triplets, to know how many to copy back
+    // to the host.
+    int nFilteredTriplets = 0;
+    ACTS_CUDA_ERROR_CHECK(cudaMemcpy(
+      &nFilteredTriplets, objectCountsDevice.get() + FilteredTriplets,
+      sizeof(int), cudaMemcpyDeviceToHost));
 
-    copyToHost(objectCountsHost, objectCountsDevice, NObjectCountTypes);
-    filteredTriplets += objectCountsHost.get()[FilteredTriplets];
+    // Move the filtered triplets back to the host for the final selection.
+    ACTS_CUDA_ERROR_CHECK(cudaMemcpy(
+      filteredTripletsHost.get(), filteredTripletsArray.get(),
+      nFilteredTriplets * sizeof(Triplet), cudaMemcpyDeviceToHost));
+
+    // Give the triplets to the seed collector on the host.
+    sc.collectTriplets(nFilteredTriplets, filteredTripletsHost, middleIndex,
+                       0.0);
   }
-  std::cout << "allTriplets = " << allTriplets << ", filteredTriplets = " << filteredTriplets << std::endl;
-
-  /*
-  // Calculate the parallelisation for the triplet finding.
-  const int numBlocksFT =
-      (dubletCounts.nTriplets + maxBlockSize - 1) / maxBlockSize;
-
-  // Create the variables used for the triplet finding. Note that we don't use
-  // @c thrust::device_vector for the Triplet array, as that takes much too long
-  // with initialising the memory for the vector.
-  const std::size_t tripletPerDubletCountsSize = nMiddleSP * nBottomSP;
-  auto tripletPerDubletCountsHost =
-      make_host_array<int>(tripletPerDubletCountsSize);
-  memset(tripletPerDubletCountsHost.get(), 0,
-         tripletPerDubletCountsSize * sizeof(int));
-  auto tripletPerDubletCountsDevice =
-      make_device_array<int>(tripletPerDubletCountsSize);
-  copyToDevice(tripletPerDubletCountsDevice, tripletPerDubletCountsHost,
-               tripletPerDubletCountsSize);
-
-  auto tripletIndices =
-      make_device_array<std::size_t>(nMiddleSP * nBottomSP *
-                                     MAX_TRIPLET_PER_MIDDLE_BOTTOM);
-
-  auto tripletCountsHost = make_host_array<int>(nMiddleSP);
-  memset(tripletCountsHost.get(), 0, nMiddleSP * sizeof(int));
-  auto tripletCountsDevice = make_device_array<int>(nMiddleSP);
-  copyToDevice(tripletCountsDevice, tripletCountsHost, nMiddleSP);
-
-  const std::size_t maxTriplets = dubletCounts.nTriplets / (2 * nMiddleSP);
-  auto tripletArray =
-      make_device_array<Triplet>(nMiddleSP * maxTriplets);
-
-  // Launch the triplet finding.
-  kernels::findTriplets<<<numBlocksFT, maxBlockSize>>>(
-      dubletCounts.nTriplets, dubletCounts.maxMBDublets,
-      dubletCounts.maxMTDublets, maxTriplets,
-      nBottomSP, bottomSPArray.get(), nMiddleSP,
-      middleSPArray.get(), nTopSP, topSPArray.get(),
-      bottomSPLinTransArray.get(), topSPLinTransArray.get(),
-      middleBottomCountArray.get(), middleBottomArray.get(),
-      middleTopCountArray.get(), middleTopArray.get(), maxScatteringAngle2,
-      sigmaScattering, minHelixDiameter2, pT2perRadius, impactMax,
-      impactWeightFactor,
-      tripletPerDubletCountsDevice.get(), tripletIndices.get(),
-      tripletCountsDevice.get(), tripletArray.get());
-  ACTS_CUDA_ERROR_CHECK(cudaGetLastError());
-  ACTS_CUDA_ERROR_CHECK(cudaDeviceSynchronize());
-  */
-
-  // Sort the found triplets, for the filtering to be faster.
-  /*
-  thrust::device_ptr<Triplet> tripletThrustPtr =
-      thrust::device_pointer_cast(tripletArray.get());
-  thrust::sort(tripletThrustPtr, tripletThrustPtr + tripletArraySize,
-               kernels::TripletSorter());
-               */
-
-  // Create the variables used as the output of this filtering.
-  /*
-  auto tripletCount2SpFiltHostArray = make_host_array<int>(nMiddleSP);
-  for (std::size_t i = 0; i < nMiddleSP; ++i) {
-    tripletCount2SpFiltHostArray.get()[i] = 0;
-  }
-  auto tripletCount2SpFiltDeviceArray = make_device_array<int>(nMiddleSP);
-  copyToDevice(tripletCount2SpFiltDeviceArray, tripletCount2SpFiltHostArray,
-               nMiddleSP);
-  auto triplet2SpFiltDeviceArray =
-      make_device_array<Triplet>(nMiddleSP * dubletCounts.maxTriplets);
-  */
-
-  // Launch the triplet filtering. Note that we only use a single thread per
-  // block. This is because the threads will be doing very different operations.
-  /*
-  kernels::filterTriplets<<<nMiddleSP, 1>>>(
-      dubletCounts.maxTriplets, nBottomSP, bottomSPArray.get(), nMiddleSP,
-      middleSPArray.get(), nTopSP, topSPArray.get(),
-      tripletCountDeviceArray.get(), tripletDeviceArray.get(),
-      deltaInvHelixDiameter, deltaRMin, compatSeedWeight, compatSeedLimit);
-      */
-
   return;
 }
 

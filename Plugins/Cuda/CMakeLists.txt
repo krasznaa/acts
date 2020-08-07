@@ -6,6 +6,9 @@ add_library(
   ActsCudaPlugin SHARED
   include/Acts/Plugins/Cuda/Seeding/FindDublets.hpp
   include/Acts/Plugins/Cuda/Seeding/FindTriplets.hpp
+  include/Acts/Plugins/Cuda/Seeding/ISeedCollector.hpp
+  include/Acts/Plugins/Cuda/Seeding/SeedCollector.hpp
+  include/Acts/Plugins/Cuda/Seeding/SeedCollector.ipp
   include/Acts/Plugins/Cuda/Seeding/Seedfinder.hpp
   include/Acts/Plugins/Cuda/Seeding/Seedfinder.ipp
   include/Acts/Plugins/Cuda/Seeding/Types.hpp

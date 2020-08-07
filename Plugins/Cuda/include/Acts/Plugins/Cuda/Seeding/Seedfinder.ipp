@@ -11,6 +11,7 @@
 // CUDA plugin include(s).
 #include "Acts/Plugins/Cuda/Seeding/FindDublets.hpp"
 #include "Acts/Plugins/Cuda/Seeding/FindTriplets.hpp"
+#include "Acts/Plugins/Cuda/Seeding/SeedCollector.hpp"
 #include "Acts/Plugins/Cuda/Seeding/Types.hpp"
 #include "Acts/Plugins/Cuda/Utilities/Arrays.hpp"
 #include "Acts/Plugins/Cuda/Utilities/HostMatrix.hpp"
@@ -21,9 +22,7 @@
 #include "Acts/Seeding/InternalSpacePoint.hpp"
 
 // System include(s).
-#include <tuple>
 #include <vector>
-#include <iostream>
 
 namespace Acts {
 namespace Cuda {
@@ -56,8 +55,8 @@ std::vector<Seed<external_spacepoint_t>>
 Seedfinder<external_spacepoint_t>::createSeedsForGroup(
     sp_range_t bottomSPs, sp_range_t middleSPs, sp_range_t topSPs) const {
 
-  // Create the result vector right away.
-  std::vector<Seed<external_spacepoint_t>> outputVec;
+  // Create a dummy vector, to be used when no seeds can be constructed.
+  std::vector<Seed<external_spacepoint_t>> dummyVec;
 
   //---------------------------------
   // Matrix Flattening
@@ -82,7 +81,7 @@ Seedfinder<external_spacepoint_t>::createSeedsForGroup(
   // If either one of them is empty, we have nothing to find.
   if ((middleSPVec.size() == 0) || (bottomSPVec.size() == 0) ||
       (topSPVec.size() == 0)) {
-    return outputVec;
+    return dummyVec;
   }
 
   // Create helper objects for storing information about the spacepoints on the
@@ -149,7 +148,8 @@ Seedfinder<external_spacepoint_t>::createSeedsForGroup(
                        middleSPVec.size(), middleSPDeviceArray,
                        topSPVec.size(), topSPDeviceArray,
                        m_commonConfig.deltaRMin, m_commonConfig.deltaRMax,
-                       m_commonConfig.cotThetaMax, m_commonConfig.collisionRegionMin,
+                       m_commonConfig.cotThetaMax,
+                       m_commonConfig.collisionRegionMin,
                        m_commonConfig.collisionRegionMax,
                        middleBottomCountArray, middleBottomArray,
                        middleTopCountArray, middleTopArray);
@@ -162,23 +162,28 @@ Seedfinder<external_spacepoint_t>::createSeedsForGroup(
 
   // If no dublets/triplet candidates have been found, stop here.
   if ((dubletCounts.nDublets == 0) || (dubletCounts.nTriplets == 0)) {
-    return outputVec;
+    return dummyVec;
   }
 
-  // Launch the triplet finding code on all of the previously found dublets.
-  details::findTriplets(m_commonConfig.maxBlockSize, dubletCounts,
-                        bottomSPVec.size(), bottomSPDeviceArray,
-                        middleSPVec.size(), middleSPDeviceArray,
-                        topSPVec.size(), topSPDeviceArray,
-                        middleBottomCountArray, middleBottomArray,
-                        middleTopCountArray, middleTopArray,
-                        m_commonConfig.maxScatteringAngle2, m_commonConfig.sigmaScattering,
-                        m_commonConfig.minHelixDiameter2, m_commonConfig.pT2perRadius,
-                        m_commonConfig.impactMax, m_filterConfig.impactWeightFactor,
-                        m_filterConfig.deltaInvHelixDiameter, m_filterConfig.deltaRMin,
-                        m_filterConfig.compatSeedWeight, m_filterConfig.compatSeedLimit);
+  // Create a helper object that will collect the triplets created by the GPU.
+  details::SeedCollector<external_spacepoint_t>
+    seedCollector(m_commonConfig, bottomSPVec, middleSPVec, topSPVec);
 
-  return outputVec;
+  // Launch the triplet finding code on all of the previously found dublets.
+  details::findTriplets(seedCollector, m_commonConfig.maxBlockSize, dubletCounts,
+    bottomSPVec.size(), bottomSPDeviceArray,
+    middleSPVec.size(), middleSPDeviceArray,
+    topSPVec.size(), topSPDeviceArray,
+    middleBottomCountArray, middleBottomArray,
+    middleTopCountArray, middleTopArray,
+    m_commonConfig.maxScatteringAngle2, m_commonConfig.sigmaScattering,
+    m_commonConfig.minHelixDiameter2, m_commonConfig.pT2perRadius,
+    m_commonConfig.impactMax, m_filterConfig.impactWeightFactor,
+    m_filterConfig.deltaInvHelixDiameter, m_filterConfig.deltaRMin,
+    m_filterConfig.compatSeedWeight, m_filterConfig.compatSeedLimit);
+
+  // Return the collected spacepoints.
+  return seedCollector.getSeeds();
 }
 
 }  // namespace Cuda

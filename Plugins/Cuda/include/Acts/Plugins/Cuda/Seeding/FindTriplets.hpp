@@ -9,6 +9,7 @@
 #pragma once
 
 // CUDA plugin include(s).
+#include "Acts/Plugins/Cuda/Seeding/ISeedCollector.hpp"
 #include "Acts/Plugins/Cuda/Seeding/Types.hpp"
 #include "Acts/Plugins/Cuda/Utilities/Arrays.hpp"
 
@@ -19,7 +20,7 @@ namespace Acts {
 namespace Cuda {
 namespace details {
 
-void findTriplets(int maxBlockSize, const DubletCounts& dubletCounts,
+void findTriplets(ISeedCollector& sc, int maxBlockSize, const DubletCounts& dubletCounts,
                   std::size_t nBottomSP,
                   const device_array<SpacePoint>& bottomSPArray,
                   std::size_t nMiddleSP,
