@@ -26,72 +26,96 @@ namespace Acts {
 namespace Cuda {
 namespace kernels {
 
-__device__ void transformCoordinates(const details::SpacePoint& spM,
-                                     const details::SpacePoint& sp,
-                                     details::LinCircle& lc,
-                                     bool bottom) {
+/// Function performing coordinate transformation for one spacepoint pair
+///
+/// @param spM    The middle spacepoint to use
+/// @param sp     The "other" spacepoint to use
+/// @param bottom @c true If the "other" spacepoint is a bottom one, @c false
+///               otherwise
+__device__ details::LinCircle transformCoordinates(
+    const details::SpacePoint& spM, const details::SpacePoint& sp,
+    bool bottom) {
+
+  // Create the result object.
+  details::LinCircle result;
 
   // Parameters of the middle spacepoint.
-  float xM = spM.x;
-  float yM = spM.y;
-  float zM = spM.z;
-  float rM = spM.radius;
-  float varianceZM = spM.varianceZ;
-  float varianceRM = spM.varianceR;
-  float cosPhiM = xM / rM;
-  float sinPhiM = yM / rM;
+  const float cosPhiM = spM.x / spM.radius;
+  const float sinPhiM = spM.y / spM.radius;
 
-  // Parameters of the spacepoint being transformed.
-  float deltaX = sp.x - xM;
-  float deltaY = sp.y - yM;
-  float deltaZ = sp.z - zM;
+  // (Relative) Parameters of the spacepoint being transformed.
+  const float deltaX = sp.x - spM.x;
+  const float deltaY = sp.y - spM.y;
+  const float deltaZ = sp.z - spM.z;
+
   // calculate projection fraction of spM->sp vector pointing in same
   // direction as
   // vector origin->spM (x) and projection fraction of spM->sp vector pointing
   // orthogonal to origin->spM (y)
-  float x = deltaX * cosPhiM + deltaY * sinPhiM;
-  float y = deltaY * cosPhiM - deltaX * sinPhiM;
+  const float x = deltaX * cosPhiM + deltaY * sinPhiM;
+  const float y = deltaY * cosPhiM - deltaX * sinPhiM;
   // 1/(length of M -> SP)
-  float iDeltaR2 = 1. / (deltaX * deltaX + deltaY * deltaY);
-  float iDeltaR = sqrtf(iDeltaR2);
+  const float iDeltaR2 = 1. / (deltaX * deltaX + deltaY * deltaY);
+  const float iDeltaR = sqrtf(iDeltaR2);
   //
-  int bottomFactor = 1 * (int(!bottom)) - 1 * (int(bottom));
+  const int bottomFactor = 1 * (int(!bottom)) - 1 * (int(bottom));
   // cot_theta = (deltaZ/deltaR)
-  float cot_theta = deltaZ * iDeltaR * bottomFactor;
+  const float cot_theta = deltaZ * iDeltaR * bottomFactor;
   // VERY frequent (SP^3) access
-  lc.cotTheta = cot_theta;
+  result.cotTheta = cot_theta;
   // location on z-axis of this SP-duplet
-  lc.Zo = zM - rM * cot_theta;
-  lc.iDeltaR = iDeltaR;
+  result.Zo = spM.z - spM.radius * cot_theta;
+  result.iDeltaR = iDeltaR;
   // transformation of circle equation (x,y) into linear equation (u,v)
   // x^2 + y^2 - 2x_0*x - 2y_0*y = 0
   // is transformed into
   // 1 - 2x_0*u - 2y_0*v = 0
   // using the following m_U and m_V
   // (u = A + B*v); A and B are created later on
-  lc.U = x * iDeltaR2;
-  lc.V = y * iDeltaR2;
+  result.U = x * iDeltaR2;
+  result.V = y * iDeltaR2;
   // error term for sp-pair without correlation of middle space point
-  lc.Er = ((varianceZM + sp.varianceZ) +
-           (cot_theta * cot_theta) * (varianceRM + sp.varianceR)) *
-          iDeltaR2;
-  return;
+  result.Er = ((spM.varianceZ + sp.varianceZ) +
+               (cot_theta * cot_theta) * (spM.varianceR + sp.varianceR)) *
+              iDeltaR2;
+  return result;
 }
 
-__global__ void transformCoordinates(int nDublets, int maxMBDublets,
-                                int maxMTDublets,
-                                std::size_t nBottomSP,
-                                const details::SpacePoint* bottomSPArray,
-                                std::size_t nMiddleSP,
-                                const details::SpacePoint* middleSPArray,
-                                std::size_t nTopSP,
-                                const details::SpacePoint* topSPArray,
-                                const int* middleBottomCountArray,
-                                const int* middleBottomArray,
-                                const int* middleTopCountArray,
-                                const int* middleTopArray,
-                                details::LinCircle* bottomSPLinTransArray,
-                                details::LinCircle* topSPLinTransArray) {
+/// Kernel performing coordinate transformation on all created dublets
+///
+/// @param nDublets The total number of dublets found
+/// @param maxMBDublets The maximal middle-bottom dublets found for any middle
+///                     spacepoint
+/// @param maxMTDublets The maximal middle-top dublets found for any middle
+///                     spacepoint
+/// @param nBottomSP The total number of bottom spacepoints
+/// @param bottomSPArray 1-dimensional array to all bottom spacepoints
+/// @param nMiddleSP The total number of middle spacepoints
+/// @param middleSPArray 1-dimensional array to all middle spacepoints
+/// @param nTopSP The total number of top spacepoints
+/// @param topSPArray 1-dimensional array to all the top spacepoints
+/// @param middleBottomCountArray 1-dimensional array of the middle-bottom
+///                               dublet counts
+/// @param middleBottomArray 2-dimensional matrix with the bottom spacepoint
+///                          indices assigned to a given middle spacepoint
+/// @param middleTopCountArray 1-dimensional array of the middle-top dublet
+///                            counts
+/// @param middleTopArray 2-dimensional matrix with the top spacepoint indices
+///                       assigned to a given middle spacepoint
+/// @param bottomSPLinTransArray 2-dimensional matrix indexed the same way as
+///                              @c middleBottomArray
+/// @param topSPLinTransArray 2-dimensional matrix indexed the same way as
+///                           @c middleTopArray
+///
+__global__ void transformCoordinates(
+    int nDublets, int maxMBDublets, int maxMTDublets,
+    std::size_t nBottomSP, const details::SpacePoint* bottomSPArray,
+    std::size_t nMiddleSP, const details::SpacePoint* middleSPArray,
+    std::size_t nTopSP, const details::SpacePoint* topSPArray,
+    const int* middleBottomCountArray, const int* middleBottomArray,
+    const int* middleTopCountArray, const int* middleTopArray,
+    details::LinCircle* bottomSPLinTransArray,
+    details::LinCircle* topSPLinTransArray) {
 
   // Get the global index.
   const int dubletIndex = blockIdx.x * blockDim.x + threadIdx.x;
@@ -124,23 +148,21 @@ __global__ void transformCoordinates(int nDublets, int maxMBDublets,
         ACTS_CUDA_MATRIX2D_ELEMENT(middleBottomArray, nMiddleSP, nBottomSP,
                                    middleIndex, bottomMatrixIndex);
     assert(bottomIndex < nBottomSP);
-    transformCoordinates(middleSPArray[middleIndex], bottomSPArray[bottomIndex],
-                         ACTS_CUDA_MATRIX2D_ELEMENT(bottomSPLinTransArray,
-                                                    nMiddleSP, maxMBDublets,
-                                                    middleIndex,
-                                                    bottomMatrixIndex),
-                         true);
+    ACTS_CUDA_MATRIX2D_ELEMENT(
+      bottomSPLinTransArray, nMiddleSP, maxMBDublets, middleIndex,
+      bottomMatrixIndex) =
+        transformCoordinates(middleSPArray[middleIndex],
+                             bottomSPArray[bottomIndex], true);
   } else {
     std::size_t topIndex =
         ACTS_CUDA_MATRIX2D_ELEMENT(middleTopArray, nMiddleSP, nTopSP,
                                    middleIndex, topMatrixIndex);
     assert(topIndex < nTopSP);
-    transformCoordinates(middleSPArray[middleIndex], topSPArray[topIndex],
-                         ACTS_CUDA_MATRIX2D_ELEMENT(topSPLinTransArray,
-                                                    nMiddleSP, maxMTDublets,
-                                                    middleIndex,
-                                                    topMatrixIndex),
-                         false);
+    ACTS_CUDA_MATRIX2D_ELEMENT(
+      topSPLinTransArray, nMiddleSP, maxMTDublets, middleIndex,
+      topMatrixIndex) =
+        transformCoordinates(middleSPArray[middleIndex], topSPArray[topIndex],
+                             false);
   }
 
   return;
