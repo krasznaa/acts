@@ -18,14 +18,6 @@ namespace Cuda {
 /// directly.
 namespace details {
 
-/// Class performing the deletion of a CUDA managed memory array
-class ManagedArrayDeleter {
- public:
-  /// Operator performing the deletion of the memory
-  void operator()(void* ptr);
-
-};  // class ManagedArrayDeleter
-
 /// Class performing the deletion of a CUDA device memory array
 class DeviceArrayDeleter {
  public:
@@ -43,15 +35,6 @@ class HostArrayDeleter {
 };  // class HostArrayDeleter
 
 }  // namespace details
-
-/// Convenience type for handling primitive variable arrays in CUDA managed
-/// memory
-template <typename T>
-using managed_array = std::unique_ptr<T, details::ManagedArrayDeleter>;
-
-/// Function creating a primitive array in CUDA managed memory
-template <typename T>
-managed_array<T> make_managed_array(std::size_t size);
 
 /// Convenience type for using primitive variable arrays on a CUDA device
 template <typename T>

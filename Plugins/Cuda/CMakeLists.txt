@@ -13,6 +13,7 @@ add_library(
   include/Acts/Plugins/Cuda/Utilities/ErrorCheck.cuh
   include/Acts/Plugins/Cuda/Utilities/HostMatrix.hpp
   include/Acts/Plugins/Cuda/Utilities/MatrixMacros.hpp
+  include/Acts/Plugins/Cuda/Utilities/MemoryManager.hpp
   include/Acts/Plugins/Cuda/Utilities/ResultScalar.hpp
   include/Acts/Plugins/Cuda/Utilities/StreamWrapper.hpp
   src/Seeding/FindDublets.cu
@@ -20,6 +21,7 @@ add_library(
   src/Utilities/Arrays.cu
   src/Utilities/ErrorCheck.cu
   src/Utilities/HostMatrix.cu
+  src/Utilities/MemoryManager.cu
   src/Utilities/ResultScalar.cu
   src/Utilities/StreamHandlers.cuh
   src/Utilities/StreamHandlers.cu

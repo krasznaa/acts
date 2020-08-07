@@ -10,6 +10,7 @@
 #include "Acts/Plugins/Cuda/Seeding/Types.hpp"
 #include "Acts/Plugins/Cuda/Utilities/Arrays.hpp"
 #include "Acts/Plugins/Cuda/Utilities/ErrorCheck.cuh"
+#include "Acts/Plugins/Cuda/Utilities/MemoryManager.hpp"
 
 // CUDA include(s).
 #include <cuda_runtime.h>
@@ -18,25 +19,9 @@ namespace Acts {
 namespace Cuda {
 namespace details {
 
-void ManagedArrayDeleter::operator()(void* ptr) {
-  // Ignore null-pointers.
-  if (ptr == nullptr) {
-    return;
-  }
-
-  // Free the managed memory.
-  ACTS_CUDA_ERROR_CHECK(cudaFree(ptr));
-  return;
-}
-
 void DeviceArrayDeleter::operator()(void* ptr) {
-  // Ignore null-pointers.
-  if (ptr == nullptr) {
-    return;
-  }
-
-  // Free the device memory.
-  ACTS_CUDA_ERROR_CHECK(cudaFree(ptr));
+  // Do not do anything! Memory will be "given up" using a call to
+  // @c Acts::Cuda::MemoryManager::reset().
   return;
 }
 
@@ -54,22 +39,12 @@ void HostArrayDeleter::operator()(void* ptr) {
 }  // namespace details
 
 template <typename T>
-managed_array<T> make_managed_array(std::size_t size) {
-  // Allocate the memory.
-  T* ptr = nullptr;
-  if (size != 0) {
-    ACTS_CUDA_ERROR_CHECK(cudaMallocManaged(&ptr, size * sizeof(T)));
-  }
-  // Create the smart pointer.
-  return managed_array<T>(ptr);
-}
-
-template <typename T>
 device_array<T> make_device_array(std::size_t size) {
   // Allocate the memory.
   T* ptr = nullptr;
   if (size != 0) {
-    ACTS_CUDA_ERROR_CHECK(cudaMalloc(&ptr, size * sizeof(T)));
+    ptr = reinterpret_cast<T*>(
+        MemoryManager::instance().allocate(size * sizeof(T)));
   }
   // Create the smart pointer.
   return device_array<T>(ptr);
@@ -112,10 +87,6 @@ void copyToHost(host_array<T>& host, const device_array<T>& dev,
 /// That's why the following expressions are as long as they are.
 ///
 #define INST_ARRAY_FOR_TYPE(TYPE)                                              \
-  template class std::unique_ptr<TYPE,                                         \
-                                 Acts::Cuda::details::ManagedArrayDeleter>;    \
-  template std::unique_ptr<TYPE, Acts::Cuda::details::ManagedArrayDeleter>     \
-      Acts::Cuda::make_managed_array<TYPE>(std::size_t);                       \
   template class std::unique_ptr<TYPE,                                         \
                                  Acts::Cuda::details::DeviceArrayDeleter>;     \
   template std::unique_ptr<TYPE, Acts::Cuda::details::DeviceArrayDeleter>      \

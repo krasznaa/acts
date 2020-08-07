@@ -32,7 +32,9 @@ void findTriplets(int maxBlockSize, const DubletCounts& dubletCounts,
                   const device_array<int>& middleTopArray,
                   float maxScatteringAngle2, float sigmaScattering,
                   float minHelixDiameter2, float pT2perRadius,
-                  float impactMax);
+                  float impactMax, float impactWeightFactor,
+                  float deltaInvHelixDiameter, float deltaRMin,
+                  float compatSeedWeight, std::size_t compatSeedLimit);
 
 }  // namespace details
 }  // namespace Cuda

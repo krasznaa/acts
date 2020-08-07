@@ -17,10 +17,11 @@ namespace details {
 
 /// Structure used in the CUDA-based triplet finding
 struct Triplet {
-  std::size_t bottomIndex = 0;
-  std::size_t topIndex = 0;
+  std::size_t bottomIndex = static_cast<std::size_t>(-1);
+  std::size_t topIndex = static_cast<std::size_t>(-1);
   float impactParameter = 0.0f;
-  float curvature = 0.0f;
+  float invHelixDiameter = 0.0f;
+  float weight = 0.0f;
 };  // struct Triplet
 
 /// Helper struct describing a spacepoint on the device
