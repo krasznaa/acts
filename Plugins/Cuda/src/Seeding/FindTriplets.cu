@@ -168,6 +168,49 @@ __global__ void transformCoordinates(
   return;
 }
 
+/// Kernel used for finding all the triplet candidates
+///
+/// @param middleIndex The middle spacepoint index to run the triplet search for
+/// @param maxMBDublets The maximal middle-bottom dublets found for any middle
+///                     spacepoint
+/// @param maxMTDublets The maximal middle-top dublets found for any middle
+///                     spacepoint
+/// @param maxTriplets The maximum number of triplets for which memory is booked
+/// @param nBottomSP The total number of bottom spacepoints
+/// @param bottomSPArray 1-dimensional array to all bottom spacepoints
+/// @param nMiddleSP The total number of middle spacepoints
+/// @param middleSPArray 1-dimensional array to all middle spacepoints
+/// @param nTopSP The total number of top spacepoints
+/// @param topSPArray 1-dimensional array to all the top spacepoints
+/// @param middleBottomCountArray 1-dimensional array of the middle-bottom
+///                               dublet counts
+/// @param middleBottomArray 2-dimensional matrix with the bottom spacepoint
+///                          indices assigned to a given middle spacepoint
+/// @param middleTopCountArray 1-dimensional array of the middle-top dublet
+///                            counts
+/// @param middleTopArray 2-dimensional matrix with the top spacepoint indices
+///                       assigned to a given middle spacepoint
+/// @param bottomSPLinTransArray 2-dimensional matrix indexed the same way as
+///                              @c middleBottomArray
+/// @param topSPLinTransArray 2-dimensional matrix indexed the same way as
+///                           @c middleTopArray
+/// @param maxScatteringAngle2 Parameter from @c Acts::SeedfinderConfig
+/// @param sigmaScattering Parameter from @c Acts::SeedfinderConfig
+/// @param minHelixDiameter2 Parameter from @c Acts::SeedfinderConfig
+/// @param pT2perRadius Parameter from @c Acts::SeedfinderConfig
+/// @param impactMax Parameter from @c Acts::SeedfinderConfig
+/// @param impactWeightFactor Parameter from @c Acts::SeedfinderConfig
+/// @param tripletsPerBottomDublet 1-dimensional array of the triplet counts for
+///                                each bottom spacepoint
+/// @param tripletIndices 2-dimensional matrix of the indices of the triplets
+///                       created for each bottom spacepoint dublet
+/// @param maxTripletsPerSpB Pointer to the scalar outputting the maximum number
+///                          of triplets found for any bottom spacepoint dublet
+/// @param tripletCount Pointer to the scalar counting the total number of
+///                     triplets created by the kernel
+/// @param tripletArray 1-dimensional array of all reconstructed triplet
+///                     candidates
+///
 __global__ void findTriplets(
     std::size_t middleIndex, int maxMBDublets, int maxMTDublets,
     int maxTriplets,
@@ -295,27 +338,30 @@ __global__ void findTriplets(
   float Im = fabs((A - B * spM.radius) * spM.radius);
 
   // Check if the triplet candidate should be accepted.
-  if (Im <= impactMax) {
-    // Reserve elements (positions) in the global matrices/arrays.
-    int tripletIndexRow = atomicAdd(tripletsPerBottomDublet + bottomDubletIndex,
-                                    1);
-    assert(tripletIndexRow < maxMTDublets);
-    int tripletIndex = atomicAdd(tripletCount, 1);
-    assert(tripletIndex < maxTriplets);
-
-    // Collect the maximal value of tripletIndexRow + 1 (since we want the
-    // count, not the index values) for the next kernel.
-    atomicMax(maxTripletsPerSpB, tripletIndexRow + 1);
-
-    // Save the index of the triplet candidate, which will be created now.
-    ACTS_CUDA_MATRIX2D_ELEMENT(tripletIndices, maxMBDublets, maxMTDublets,
-                               bottomDubletIndex, tripletIndexRow) = tripletIndex;
-
-    // Now store the triplet in the above mentioned location.
-    details::Triplet triplet = {bottomIndex, topIndex, Im,
-                                B / sqrtf(S2), -(Im * impactWeightFactor)};
-    tripletArray[tripletIndex] = triplet;
+  if (Im > impactMax) {
+    return;
   }
+
+  // Reserve elements (positions) in the global matrices/arrays.
+  int tripletIndexRow =
+    atomicAdd(tripletsPerBottomDublet + bottomDubletIndex, 1);
+  assert(tripletIndexRow < maxMTDublets);
+  int tripletIndex = atomicAdd(tripletCount, 1);
+  assert(tripletIndex < maxTriplets);
+
+  // Collect the maximal value of tripletIndexRow + 1 (since we want the
+  // count, not the index values) for the next kernel.
+  atomicMax(maxTripletsPerSpB, tripletIndexRow + 1);
+
+  // Save the index of the triplet candidate, which will be created now.
+  ACTS_CUDA_MATRIX2D_ELEMENT(
+    tripletIndices, maxMBDublets, maxMTDublets, bottomDubletIndex,
+    tripletIndexRow) = tripletIndex;
+
+  // Now store the triplet in the above mentioned location.
+  details::Triplet triplet = {bottomIndex, topIndex, Im,
+                              B / sqrtf(S2), -(Im * impactWeightFactor)};
+  tripletArray[tripletIndex] = triplet;
 
   return;
 }
