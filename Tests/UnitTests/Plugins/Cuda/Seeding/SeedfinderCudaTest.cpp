@@ -195,11 +195,12 @@ int main(int argc, char** argv) {
   auto topBinFinder = std::make_shared<Acts::BinFinder<SpacePoint>>(
       Acts::BinFinder<SpacePoint>());
   Acts::SeedFilterConfig sfconf;
+  Acts::Cuda::SeedFilterConfig cudaSFConf;
   Acts::ATLASCuts<SpacePoint> atlasCuts = Acts::ATLASCuts<SpacePoint>();
   config.seedFilter = std::make_unique<Acts::SeedFilter<SpacePoint>>(
       Acts::SeedFilter<SpacePoint>(sfconf, &atlasCuts));
   Acts::Seedfinder<SpacePoint> seedfinder_cpu(config);
-  Acts::Cuda::Seedfinder<SpacePoint> seedfinder_cuda(config);
+  Acts::Cuda::Seedfinder<SpacePoint> seedfinder_cuda(config, cudaSFConf);
 
   // covariance tool, sets covariances per spacepoint as required
   auto ct = [=](const SpacePoint& sp, float, float, float) -> Acts::Vector2D {

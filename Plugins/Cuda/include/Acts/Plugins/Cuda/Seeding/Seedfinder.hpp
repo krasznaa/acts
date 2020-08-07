@@ -8,6 +8,9 @@
 
 #pragma once
 
+// CUDA plugin include(s).
+#include "Acts/Plugins/Cuda/Seeding/SeedFilterConfig.hpp"
+
 // Acts include(s).
 #include "Acts/Seeding/Seed.hpp"
 #include "Acts/Seeding/SeedfinderConfig.hpp"
@@ -22,7 +25,8 @@ class Seedfinder {
   ///////////////////////////////////////////////////////////////////
 
  public:
-  Seedfinder(SeedfinderConfig<external_spacepoint_t> config);
+  Seedfinder(SeedfinderConfig<external_spacepoint_t> commonConfig,
+             SeedFilterConfig filterConfig);
 
   ~Seedfinder() = default;
   /**    @name Disallow default instantiation, copy, assignment */
@@ -47,7 +51,9 @@ class Seedfinder {
 
  private:
   /// Configuration for the seed finder
-  SeedfinderConfig<external_spacepoint_t> m_config;
+  SeedfinderConfig<external_spacepoint_t> m_commonConfig;
+  /// Configuration for the seed filter
+  SeedFilterConfig m_filterConfig;
 };
 
 }  // namespace Cuda

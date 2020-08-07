@@ -31,23 +31,24 @@ namespace Cuda {
 
 template <typename external_spacepoint_t>
 Seedfinder<external_spacepoint_t>::Seedfinder(
-    Acts::SeedfinderConfig<external_spacepoint_t> config)
-    : m_config(std::move(config)) {
+    Acts::SeedfinderConfig<external_spacepoint_t> commonConfig,
+    SeedFilterConfig filterConfig)
+    : m_commonConfig(std::move(commonConfig)), m_filterConfig(filterConfig) {
   // calculation of scattering using the highland formula
   // convert pT to p once theta angle is known
-  m_config.highland = 13.6 * std::sqrt(m_config.radLengthPerSeed) *
-                      (1 + 0.038 * std::log(m_config.radLengthPerSeed));
-  float maxScatteringAngle = m_config.highland / m_config.minPt;
-  m_config.maxScatteringAngle2 = maxScatteringAngle * maxScatteringAngle;
+  m_commonConfig.highland = 13.6 * std::sqrt(m_commonConfig.radLengthPerSeed) *
+                      (1 + 0.038 * std::log(m_commonConfig.radLengthPerSeed));
+  float maxScatteringAngle = m_commonConfig.highland / m_commonConfig.minPt;
+  m_commonConfig.maxScatteringAngle2 = maxScatteringAngle * maxScatteringAngle;
 
   // helix radius in homogeneous magnetic field. Units are Kilotesla, MeV and
   // millimeter
   // TODO: change using ACTS units
-  m_config.pTPerHelixRadius = 300. * m_config.bFieldInZ;
-  m_config.minHelixDiameter2 =
-      std::pow(m_config.minPt * 2 / m_config.pTPerHelixRadius, 2);
-  m_config.pT2perRadius =
-      std::pow(m_config.highland / m_config.pTPerHelixRadius, 2);
+  m_commonConfig.pTPerHelixRadius = 300. * m_commonConfig.bFieldInZ;
+  m_commonConfig.minHelixDiameter2 =
+      std::pow(m_commonConfig.minPt * 2 / m_commonConfig.pTPerHelixRadius, 2);
+  m_commonConfig.pT2perRadius =
+      std::pow(m_commonConfig.highland / m_commonConfig.pTPerHelixRadius, 2);
 }
 
 template <typename external_spacepoint_t>
@@ -147,20 +148,20 @@ Seedfinder<external_spacepoint_t>::createSeedsForGroup(
   middleTopCounts.copyTo(middleTopCountArray);
 
   // Launch the dublet finding code.
-  details::findDublets(m_config.maxBlockSize,
+  details::findDublets(m_commonConfig.maxBlockSize,
                        bottomSPVec.size(), bottomSPDeviceArray,
                        middleSPVec.size(), middleSPDeviceArray,
                        topSPVec.size(), topSPDeviceArray,
-                       m_config.deltaRMin, m_config.deltaRMax,
-                       m_config.cotThetaMax, m_config.collisionRegionMin,
-                       m_config.collisionRegionMax,
+                       m_commonConfig.deltaRMin, m_commonConfig.deltaRMax,
+                       m_commonConfig.cotThetaMax, m_commonConfig.collisionRegionMin,
+                       m_commonConfig.collisionRegionMax,
                        middleBottomCountArray, middleBottomArray,
                        middleTopCountArray, middleTopArray);
 
   // Count the number of dublets that we have to launch the subsequent steps
   // for.
   details::DubletCounts dubletCounts =
-      details::countDublets(m_config.maxBlockSize, middleSPVec.size(),
+      details::countDublets(m_commonConfig.maxBlockSize, middleSPVec.size(),
                             middleBottomCountArray, middleTopCountArray);
 
   // If no dublets/triplet candidates have been found, stop here.
@@ -169,17 +170,17 @@ Seedfinder<external_spacepoint_t>::createSeedsForGroup(
   }
 
   // Launch the triplet finding code on all of the previously found dublets.
-  details::findTriplets(m_config.maxBlockSize, dubletCounts,
+  details::findTriplets(m_commonConfig.maxBlockSize, dubletCounts,
                         bottomSPVec.size(), bottomSPDeviceArray,
                         middleSPVec.size(), middleSPDeviceArray,
                         topSPVec.size(), topSPDeviceArray,
                         middleBottomCountArray, middleBottomArray,
                         middleTopCountArray, middleTopArray,
-                        m_config.maxScatteringAngle2, m_config.sigmaScattering,
-                        m_config.minHelixDiameter2, m_config.pT2perRadius,
-                        m_config.impactMax, m_config.seedFilter->m_cfg.impactWeightFactor,
-                        m_config.seedFilter->m_cfg.deltaInvHelixDiameter, m_config.seedFilter->m_cfg.deltaRMin,
-                        m_config.seedFilter->m_cfg.compatSeedWeight, m_config.seedFilter->m_cfg.compatSeedLimit);
+                        m_commonConfig.maxScatteringAngle2, m_commonConfig.sigmaScattering,
+                        m_commonConfig.minHelixDiameter2, m_commonConfig.pT2perRadius,
+                        m_commonConfig.impactMax, m_filterConfig.impactWeightFactor,
+                        m_filterConfig.deltaInvHelixDiameter, m_filterConfig.deltaRMin,
+                        m_filterConfig.compatSeedWeight, m_filterConfig.compatSeedLimit);
 
   return outputVec;
 }
