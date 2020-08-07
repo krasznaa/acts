@@ -203,7 +203,7 @@ __global__ void transformCoordinates(
 /// @param tripletsPerBottomDublet 1-dimensional array of the triplet counts for
 ///                                each bottom spacepoint
 /// @param tripletIndices 2-dimensional matrix of the indices of the triplets
-///                       created for each bottom spacepoint dublet
+///                       created for each middle-bottom spacepoint dublet
 /// @param maxTripletsPerSpB Pointer to the scalar outputting the maximum number
 ///                          of triplets found for any bottom spacepoint dublet
 /// @param tripletCount Pointer to the scalar counting the total number of
@@ -389,8 +389,37 @@ __device__ bool singleSeedCut(float weight, const details::SpacePoint& bottom,
   return !(bottom.radius > 150. && weight < 380.);
 }
 
-__device__ void breakpoint() {}
-
+/// Kernel performing the "2 fixed spacepoint filtering" of the triplets
+///
+/// @param middleIndex The middle spacepoint index to run the triplet filter for
+/// @param maxMBDublets The maximal middle-bottom dublets found for any middle
+///                     spacepoint
+/// @param maxMTDublets The maximal middle-top dublets found for any middle
+///                     spacepoint
+/// @param middleBottomDublets The total number of middle-bottom spacepoint
+///                            dublets for this middle spacepoint
+/// @param nBottomSP The total number of bottom spacepoints
+/// @param bottomSPArray 1-dimensional array to all bottom spacepoints
+/// @param nMiddleSP The total number of middle spacepoints
+/// @param middleSPArray 1-dimensional array to all middle spacepoints
+/// @param nTopSP The total number of top spacepoints
+/// @param topSPArray 1-dimensional array to all the top spacepoints
+/// @param tripletsPerBottomDublet 1-dimensional array of the number of triplets
+///                                found for every middle-bottom spacepoint
+///                                dublet
+/// @param tripletIndices 2-dimensional matrix of the indices of the triplets
+///                       created for each middle-bottom spacepoint dublet
+/// @param nAllTriplets Pointer to the scalar number of triplets found in total
+/// @param allTriplets 1-dimensional array of all the found triplets
+/// @param deltaInvHelixDiameter Parameter from @c Acts::Cuda::SeedFilterConfig
+/// @param deltaRMin Parameter from @c Acts::Cuda::SeedFilterConfig
+/// @param compatSeedWeight Parameter from @c Acts::Cuda::SeedFilterConfig
+/// @param compatSeedLimit Parameter from @c Acts::Cuda::SeedFilterConfig
+/// @param nFilteredTriplets Pointer to the scalar counting all triplets that
+///                          survive this filter
+/// @param filteredTriplets 1-dimensional array of triplets that survive this
+///                         filter
+///
 __global__ void filterTriplets2Sp(
     std::size_t middleIndex, int maxMBDublets, int maxMTDublets,
     int middleBottomDublets,
@@ -430,17 +459,11 @@ __global__ void filterTriplets2Sp(
   float lowerLimitCurv = triplet1.invHelixDiameter - deltaInvHelixDiameter;
   float upperLimitCurv = triplet1.invHelixDiameter + deltaInvHelixDiameter;
   float currentTop_r = topSPArray[triplet1.topIndex].radius;
-  /*
-  if (bottomDubletIndex == 0 && tripletMatrixIndex == 0) {
-    printf("triplet1.bottomIndex = %zu\n", triplet1.bottomIndex);
-    printf("triplet1.topIndex = %zu\n", triplet1.topIndex);
-    printf("triplet1.impactParameter = %g\n", triplet1.impactParameter);
-    printf("triplet1.invHelixDiameter = %g\n", triplet1.invHelixDiameter);
-    printf("triplet1.weight = %g\n", triplet1.weight);
-  }
-  */
 
-  // Allow only a maximum number of top spacepoints in the filtering.
+  // Allow only a maximum number of top spacepoints in the filtering. Since a
+  // limit is coming from @c compatSeedLimit anyway, this could potentially be
+  // re-written with an array alocation, instead of statically defining the
+  // array's size.
   static constexpr std::size_t MAX_TOP_SP = 10;
   assert(compatSeedLimit < MAX_TOP_SP);
   float compatibleSeedR[MAX_TOP_SP];
