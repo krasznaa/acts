@@ -14,7 +14,6 @@
 #include "Acts/Plugins/Cuda/Seeding/Types.hpp"
 #include "Acts/Plugins/Cuda/Utilities/Arrays.hpp"
 #include "Acts/Plugins/Cuda/Utilities/HostMatrix.hpp"
-#include "Acts/Plugins/Cuda/Utilities/MemoryManager.hpp"
 #include "Acts/Plugins/Cuda/Utilities/ResultScalar.hpp"
 
 // Acts include(s).
@@ -63,9 +62,6 @@ Seedfinder<external_spacepoint_t>::createSeedsForGroup(
   //---------------------------------
   // Matrix Flattening
   //---------------------------------
-
-  // Reset all the memory allocated for Acts on the CUDA device.
-  MemoryManager::instance().reset();
 
   // Create more convenient vectors out of the space point containers.
   auto spVecMaker = [](sp_range_t spRange) {

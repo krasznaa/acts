@@ -10,7 +10,6 @@
 #include "Acts/Plugins/Cuda/Seeding/Types.hpp"
 #include "Acts/Plugins/Cuda/Utilities/Arrays.hpp"
 #include "Acts/Plugins/Cuda/Utilities/ErrorCheck.cuh"
-#include "Acts/Plugins/Cuda/Utilities/MemoryManager.hpp"
 
 // CUDA include(s).
 #include <cuda_runtime.h>
@@ -20,8 +19,13 @@ namespace Cuda {
 namespace details {
 
 void DeviceArrayDeleter::operator()(void* ptr) {
-  // Do not do anything! Memory will be "given up" using a call to
-  // @c Acts::Cuda::MemoryManager::reset().
+  // Ignore null-pointers.
+  if (ptr == nullptr) {
+    return;
+  }
+
+  // Free the pinned host memory.
+  ACTS_CUDA_ERROR_CHECK(cudaFree(ptr));
   return;
 }
 
@@ -43,8 +47,7 @@ device_array<T> make_device_array(std::size_t size) {
   // Allocate the memory.
   T* ptr = nullptr;
   if (size != 0) {
-    ptr = reinterpret_cast<T*>(
-        MemoryManager::instance().allocate(size * sizeof(T)));
+    ACTS_CUDA_ERROR_CHECK(cudaMalloc(&ptr, size * sizeof(T)));
   }
   // Create the smart pointer.
   return device_array<T>(ptr);
