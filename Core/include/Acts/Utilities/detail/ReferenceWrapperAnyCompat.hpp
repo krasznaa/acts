@@ -31,6 +31,9 @@ struct is_constructible<std::reference_wrapper<const std::any>,
 template <>
 struct is_copy_constructible<std::reference_wrapper<const std::any>>
     : public true_type {};
+template <>
+struct is_copy_constructible<std::reference_wrapper<const std::any>>
+    : public true_type {};
 }  // namespace std
 
 #endif
