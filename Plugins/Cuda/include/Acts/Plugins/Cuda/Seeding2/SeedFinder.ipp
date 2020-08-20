@@ -14,6 +14,7 @@
 #include "Acts/Plugins/Cuda/Seeding2/Details/FindTriplets.hpp"
 #include "Acts/Plugins/Cuda/Seeding2/Details/Types.hpp"
 #include "Acts/Plugins/Cuda/Utilities/Arrays.hpp"
+#include "Acts/Plugins/Cuda/Utilities/Info.hpp"
 
 // Acts include(s).
 #include "Acts/Seeding/InternalSeed.hpp"
@@ -30,7 +31,8 @@ template <typename external_spacepoint_t>
 SeedFinder<external_spacepoint_t>::SeedFinder(
     Acts::SeedfinderConfig<external_spacepoint_t> commonConfig,
     const SeedFilterConfig& seedFilterConfig,
-    const TripletFilterConfig& tripletFilterConfig)
+    const TripletFilterConfig& tripletFilterConfig, std::size_t device,
+    Acts::Logging::Level loggerLevel)
     : m_commonConfig(std::move(commonConfig)),
       m_seedFilterConfig(seedFilterConfig),
       m_tripletFilterConfig(tripletFilterConfig) {
@@ -50,6 +52,16 @@ SeedFinder<external_spacepoint_t>::SeedFinder(
       std::pow(m_commonConfig.minPt * 2 / m_commonConfig.pTPerHelixRadius, 2);
   m_commonConfig.pT2perRadius =
       std::pow(m_commonConfig.highland / m_commonConfig.pTPerHelixRadius, 2);
+
+  // Tell the user what CUDA device will be used by the object.
+  ACTS_LOCAL_LOGGER(
+      Acts::getDefaultLogger("Acts::Cuda::SeedFinder", loggerLevel));
+  if (device < Info::instance().devices().size()) {
+    ACTS_INFO("Will be using device:\n" << Info::instance().devices()[device]);
+  } else {
+    ACTS_FATAL("Invalid CUDA device requested");
+    throw std::runtime_error("Invalid CUDA device requested");
+  }
 }
 
 template <typename external_spacepoint_t>
