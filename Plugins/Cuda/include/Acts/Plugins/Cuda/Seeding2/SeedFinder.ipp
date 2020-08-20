@@ -35,7 +35,8 @@ SeedFinder<external_spacepoint_t>::SeedFinder(
     Acts::Logging::Level loggerLevel)
     : m_commonConfig(std::move(commonConfig)),
       m_seedFilterConfig(seedFilterConfig),
-      m_tripletFilterConfig(tripletFilterConfig) {
+      m_tripletFilterConfig(tripletFilterConfig),
+      m_stream(nullptr) {
   // calculation of scattering using the highland formula
   // convert pT to p once theta angle is known
   m_commonConfig.highland =
@@ -58,6 +59,7 @@ SeedFinder<external_spacepoint_t>::SeedFinder(
       Acts::getDefaultLogger("Acts::Cuda::SeedFinder", loggerLevel));
   if (device < Info::instance().devices().size()) {
     ACTS_INFO("Will be using device:\n" << Info::instance().devices()[device]);
+    m_stream = createStreamFor(Info::instance().devices()[device]);
   } else {
     ACTS_FATAL("Invalid CUDA device requested");
     throw std::runtime_error("Invalid CUDA device requested");
@@ -127,9 +129,11 @@ SeedFinder<external_spacepoint_t>::createSeedsForGroup(
       make_device_array<Details::SpacePoint>(middleSPVec.size());
   auto topSPDeviceArray =
       make_device_array<Details::SpacePoint>(topSPVec.size());
-  copyToDevice(bottomSPDeviceArray, bottomSPArray, bottomSPVec.size());
-  copyToDevice(middleSPDeviceArray, middleSPArray, middleSPVec.size());
-  copyToDevice(topSPDeviceArray, topSPArray, topSPVec.size());
+  copyToDevice(bottomSPDeviceArray, bottomSPArray, bottomSPVec.size(),
+               m_stream);
+  copyToDevice(middleSPDeviceArray, middleSPArray, middleSPVec.size(),
+               m_stream);
+  copyToDevice(topSPDeviceArray, topSPArray, topSPVec.size(), m_stream);
 
   //---------------------------------
   // GPU Execution
@@ -140,9 +144,10 @@ SeedFinder<external_spacepoint_t>::createSeedsForGroup(
   auto dubletCountsHost = make_host_array<unsigned int>(middleSPVec.size());
   memset(dubletCountsHost.get(), 0, middleSPVec.size() * sizeof(unsigned int));
   auto middleBottomCounts = make_device_array<unsigned int>(middleSPVec.size());
-  copyToDevice(middleBottomCounts, dubletCountsHost, middleSPVec.size());
+  copyToDevice(middleBottomCounts, dubletCountsHost, middleSPVec.size(),
+               m_stream);
   auto middleTopCounts = make_device_array<unsigned int>(middleSPVec.size());
-  copyToDevice(middleTopCounts, dubletCountsHost, middleSPVec.size());
+  copyToDevice(middleTopCounts, dubletCountsHost, middleSPVec.size(), m_stream);
 
   // Matrices holding the indices of the viable bottom-middle and middle-top
   // pairs.
@@ -152,19 +157,20 @@ SeedFinder<external_spacepoint_t>::createSeedsForGroup(
       make_device_array<std::size_t>(middleSPVec.size() * topSPVec.size());
 
   // Launch the dublet finding code.
-  Details::findDublets(
-      m_commonConfig.maxBlockSize, bottomSPVec.size(), bottomSPDeviceArray,
-      middleSPVec.size(), middleSPDeviceArray, topSPVec.size(),
-      topSPDeviceArray, m_commonConfig.deltaRMin, m_commonConfig.deltaRMax,
-      m_commonConfig.cotThetaMax, m_commonConfig.collisionRegionMin,
-      m_commonConfig.collisionRegionMax, middleBottomCounts,
-      middleBottomDublets, middleTopCounts, middleTopDublets);
+  Details::findDublets(m_stream, m_commonConfig.maxBlockSize,
+                       bottomSPVec.size(), bottomSPDeviceArray,
+                       middleSPVec.size(), middleSPDeviceArray, topSPVec.size(),
+                       topSPDeviceArray, m_commonConfig.deltaRMin,
+                       m_commonConfig.deltaRMax, m_commonConfig.cotThetaMax,
+                       m_commonConfig.collisionRegionMin,
+                       m_commonConfig.collisionRegionMax, middleBottomCounts,
+                       middleBottomDublets, middleTopCounts, middleTopDublets);
 
   // Count the number of dublets that we have to launch the subsequent steps
   // for.
-  Details::DubletCounts dubletCounts =
-      Details::countDublets(m_commonConfig.maxBlockSize, middleSPVec.size(),
-                            middleBottomCounts, middleTopCounts);
+  Details::DubletCounts dubletCounts = Details::countDublets(
+      m_stream, m_commonConfig.maxBlockSize, middleSPVec.size(),
+      middleBottomCounts, middleTopCounts);
 
   // If no dublets/triplet candidates have been found, stop here.
   if ((dubletCounts.nDublets == 0) || (dubletCounts.nTriplets == 0)) {
@@ -173,7 +179,7 @@ SeedFinder<external_spacepoint_t>::createSeedsForGroup(
 
   // Launch the triplet finding code on all of the previously found dublets.
   auto tripletCandidates = Details::findTriplets(
-      m_commonConfig.maxBlockSize, dubletCounts, m_seedFilterConfig,
+      m_stream, m_commonConfig.maxBlockSize, dubletCounts, m_seedFilterConfig,
       m_tripletFilterConfig, bottomSPVec.size(), bottomSPDeviceArray,
       middleSPVec.size(), middleSPDeviceArray, topSPVec.size(),
       topSPDeviceArray, middleBottomCounts, middleBottomDublets,

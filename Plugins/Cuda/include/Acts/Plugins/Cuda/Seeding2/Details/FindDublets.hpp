@@ -11,6 +11,7 @@
 // CUDA2 plugin include(s).
 #include "Acts/Plugins/Cuda/Seeding2/Details/Types.hpp"
 #include "Acts/Plugins/Cuda/Utilities/Arrays.hpp"
+#include "Acts/Plugins/Cuda/Utilities/StreamWrapper.hpp"
 
 // System include(s).
 #include <cstddef>
@@ -30,6 +31,7 @@ namespace Details {
 /// execute atomic operations on these arrays. And CUDA does not define such
 /// operations on std::size_t (i.e. unsigned long).
 ///
+/// @param[in] stream The CUDA stream to execute all operations in
 /// @param[in] maxBlockSize The maximum block size to use on the GPU
 /// @param[in] nBottomSPs The number of bottom spacepoints in @c bottomSPs
 /// @param[in] bottomSPs Properties of all of the bottom spacepoints
@@ -56,7 +58,8 @@ namespace Details {
 ///             @c nMiddleSPs x @c nTopSPs, holding the top spacepoint
 ///             indices for the identified middle-top dublets
 ///
-void findDublets(std::size_t maxBlockSize, std::size_t nBottomSPs,
+void findDublets(const StreamWrapper& stream, std::size_t maxBlockSize,
+                 std::size_t nBottomSPs,
                  const device_array<SpacePoint>& bottomSPs,
                  std::size_t nMiddleSPs,
                  const device_array<SpacePoint>& middleSPs, std::size_t nTopSPs,

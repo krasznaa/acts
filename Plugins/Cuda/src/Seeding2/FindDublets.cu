@@ -11,6 +11,7 @@
 #include "Acts/Plugins/Cuda/Seeding2/Details/Types.hpp"
 #include "../Utilities/ErrorCheck.cuh"
 #include "../Utilities/MatrixMacros.hpp"
+#include "../Utilities/StreamHandlers.cuh"
 
 // System include(s).
 #include <cassert>
@@ -149,7 +150,8 @@ __global__ void findDublets(std::size_t nMiddleSPs,
 
 namespace Details {
 
-void findDublets(std::size_t maxBlockSize, std::size_t nBottomSPs,
+void findDublets(const StreamWrapper& stream, std::size_t maxBlockSize,
+                 std::size_t nBottomSPs,
                  const device_array<SpacePoint>& bottomSPs,
                  std::size_t nMiddleSPs,
                  const device_array<SpacePoint>& middleSPs, std::size_t nTopSPs,
@@ -160,6 +162,12 @@ void findDublets(std::size_t maxBlockSize, std::size_t nBottomSPs,
                  device_array<std::size_t>& middleBottomDublets,
                  device_array<unsigned int>& middleTopCounts,
                  device_array<std::size_t>& middleTopDublets) {
+  // Access the stream that we'll use for the dublet finding.
+  cudaStream_t cuStream = getStreamFrom(stream);
+  assert(cuStream != nullptr);
+  // The amount of shared/local memory needed by the kernels.
+  static constexpr int SHAREDMEM = 0;
+
   // Calculate the parallelisation for the middle<->bottom spacepoint
   // compatibility flagging.
   const dim3 blockSizeMB(1, maxBlockSize);
@@ -167,10 +175,11 @@ void findDublets(std::size_t maxBlockSize, std::size_t nBottomSPs,
                          (nBottomSPs + blockSizeMB.y - 1) / blockSizeMB.y);
 
   // Launch the middle-bottom dublet finding.
-  Kernels::findDublets<BottomSP><<<numBlocksMB, blockSizeMB>>>(
-      nMiddleSPs, middleSPs.get(), nBottomSPs, bottomSPs.get(), deltaRMin,
-      deltaRMax, cotThetaMax, collisionRegionMin, collisionRegionMax,
-      middleBottomCounts.get(), middleBottomDublets.get());
+  Kernels::findDublets<BottomSP>
+      <<<numBlocksMB, blockSizeMB, SHAREDMEM, cuStream>>>(
+          nMiddleSPs, middleSPs.get(), nBottomSPs, bottomSPs.get(), deltaRMin,
+          deltaRMax, cotThetaMax, collisionRegionMin, collisionRegionMax,
+          middleBottomCounts.get(), middleBottomDublets.get());
   ACTS_CUDA_ERROR_CHECK(cudaGetLastError());
 
   // Calculate the parallelisation for the middle<->top spacepoint
@@ -180,12 +189,12 @@ void findDublets(std::size_t maxBlockSize, std::size_t nBottomSPs,
                          (nTopSPs + blockSizeMT.y - 1) / blockSizeMT.y);
 
   // Launch the middle-bottom dublet finding.
-  Kernels::findDublets<TopSP><<<numBlocksMT, blockSizeMT>>>(
-      nMiddleSPs, middleSPs.get(), nTopSPs, topSPs.get(), deltaRMin, deltaRMax,
-      cotThetaMax, collisionRegionMin, collisionRegionMax,
-      middleTopCounts.get(), middleTopDublets.get());
+  Kernels::findDublets<TopSP>
+      <<<numBlocksMT, blockSizeMT, SHAREDMEM, cuStream>>>(
+          nMiddleSPs, middleSPs.get(), nTopSPs, topSPs.get(), deltaRMin,
+          deltaRMax, cotThetaMax, collisionRegionMin, collisionRegionMax,
+          middleTopCounts.get(), middleTopDublets.get());
   ACTS_CUDA_ERROR_CHECK(cudaGetLastError());
-  ACTS_CUDA_ERROR_CHECK(cudaDeviceSynchronize());
   return;
 }
 

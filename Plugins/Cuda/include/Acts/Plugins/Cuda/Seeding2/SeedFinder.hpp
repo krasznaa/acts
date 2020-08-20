@@ -10,6 +10,7 @@
 
 // CUDA plugin include(s).
 #include "Acts/Plugins/Cuda/Seeding2/TripletFilterConfig.hpp"
+#include "Acts/Plugins/Cuda/Utilities/StreamWrapper.hpp"
 
 // Acts include(s).
 #include "Acts/Seeding/Seed.hpp"
@@ -61,6 +62,8 @@ class SeedFinder {
   SeedFilterConfig m_seedFilterConfig;
   /// Configuration for the (device) triplet filter
   TripletFilterConfig m_tripletFilterConfig;
+  /// CUDA stream to run the offloaded calculations in
+  StreamWrapper m_stream;
 };
 
 }  // namespace Cuda

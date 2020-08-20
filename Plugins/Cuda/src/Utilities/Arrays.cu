@@ -9,7 +9,8 @@
 // CUDA plugin include(s).
 #include "Acts/Plugins/Cuda/Seeding2/Details/Types.hpp"
 #include "Acts/Plugins/Cuda/Utilities/Arrays.hpp"
-#include "../Utilities/ErrorCheck.cuh"
+#include "ErrorCheck.cuh"
+#include "StreamHandlers.cuh"
 
 // CUDA include(s).
 #include <cuda_runtime.h>
@@ -66,17 +67,19 @@ host_array<T> make_host_array(std::size_t size) {
 
 template <typename T>
 void copyToDevice(device_array<T>& dev, const host_array<T>& host,
-                  std::size_t arraySize) {
-  ACTS_CUDA_ERROR_CHECK(cudaMemcpy(dev.get(), host.get(), arraySize * sizeof(T),
-                                   cudaMemcpyHostToDevice));
+                  std::size_t arraySize, const StreamWrapper& stream) {
+  ACTS_CUDA_ERROR_CHECK(
+      cudaMemcpyAsync(dev.get(), host.get(), arraySize * sizeof(T),
+                      cudaMemcpyHostToDevice, getStreamFrom(stream)));
   return;
 }
 
 template <typename T>
 void copyToHost(host_array<T>& host, const device_array<T>& dev,
-                std::size_t arraySize) {
-  ACTS_CUDA_ERROR_CHECK(cudaMemcpy(host.get(), dev.get(), arraySize * sizeof(T),
-                                   cudaMemcpyDeviceToHost));
+                std::size_t arraySize, const StreamWrapper& stream) {
+  ACTS_CUDA_ERROR_CHECK(
+      cudaMemcpyAsync(host.get(), dev.get(), arraySize * sizeof(T),
+                      cudaMemcpyDeviceToHost, getStreamFrom(stream)));
   return;
 }
 
@@ -100,11 +103,11 @@ void copyToHost(host_array<T>& host, const device_array<T>& dev,
   template void Acts::Cuda::copyToDevice<TYPE>(                                \
       std::unique_ptr<TYPE, Acts::Cuda::Details::DeviceArrayDeleter>&,         \
       const std::unique_ptr<TYPE, Acts::Cuda::Details::HostArrayDeleter>&,     \
-      std::size_t);                                                            \
+      std::size_t, const Acts::Cuda::StreamWrapper&);                          \
   template void Acts::Cuda::copyToHost<TYPE>(                                  \
       std::unique_ptr<TYPE, Acts::Cuda::Details::HostArrayDeleter>&,           \
       const std::unique_ptr<TYPE, Acts::Cuda::Details::DeviceArrayDeleter>&,   \
-      std::size_t)
+      std::size_t, const Acts::Cuda::StreamWrapper&)
 
 // Instantiate the templated functions for all primitive types.
 INST_ARRAY_FOR_TYPE(char);
