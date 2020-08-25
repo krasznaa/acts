@@ -7,6 +7,7 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 // CUDA plugin include(s).
+#include "../Utilities/MatrixMacros.hpp"
 #include "TripletHelpers.cuh"
 
 // System include(s).
@@ -32,7 +33,7 @@ __host__ __device__ std::size_t countTripletsToEvaluate(
   return result;
 }
 
-__host__ __device__ TripletFinderIndices findTripletIndex(
+__host__ __device__ TripletFinderIndices tripletFinderIndex(
     std::size_t i, std::size_t middleIndexStart, std::size_t nParallelMiddleSPs,
     const unsigned int* middleBottomDubletCounts,
     const unsigned int* middleTopDubletCounts) {
@@ -63,6 +64,48 @@ __host__ __device__ TripletFinderIndices findTripletIndex(
       (helperIndex1 -
        result.bottomDubletIndex * middleTopDubletCounts[result.middleIndex]);
   assert(result.topDubletIndex < middleTopDubletCounts[result.middleIndex]);
+
+  // Return the indices.
+  return result;
+}
+
+__host__ __device__ TripletFilterIndices tripletFilterIndex(
+    std::size_t i, std::size_t middleIndexStart, std::size_t nParallelMiddleSPs,
+    std::size_t maxMBDublets, const unsigned int* middleBottomDubletCounts,
+    const unsigned int* tripletsPerBottomDublet) {
+  // Create the result object.
+  TripletFilterIndices result;
+
+  // Find which indices this one index refers to.
+  int remaining = i, middleIndexOffset = 0, bottomDubletIndex = 0;
+  unsigned int helperCount = ACTS_CUDA_MATRIX2D_ELEMENT(
+      tripletsPerBottomDublet, nParallelMiddleSPs, maxMBDublets,
+      middleIndexOffset, bottomDubletIndex);
+  while (remaining >= helperCount) {
+    remaining -= helperCount;
+    if (bottomDubletIndex + 1 <
+        middleBottomDubletCounts[middleIndexStart + middleIndexOffset]) {
+      ++bottomDubletIndex;
+    } else {
+      bottomDubletIndex = 0;
+      ++middleIndexOffset;
+    }
+    helperCount = ACTS_CUDA_MATRIX2D_ELEMENT(
+        tripletsPerBottomDublet, nParallelMiddleSPs, maxMBDublets,
+        middleIndexOffset, bottomDubletIndex);
+  }
+  assert(middleIndexOffset < nParallelMiddleSPs);
+  assert(bottomDubletIndex <
+         middleBottomDubletCounts[middleIndexStart + middleIndexOffset]);
+  assert(remaining >= 0);
+  assert(remaining < ACTS_CUDA_MATRIX2D_ELEMENT(
+                         tripletsPerBottomDublet, nParallelMiddleSPs,
+                         maxMBDublets, middleIndexOffset, bottomDubletIndex));
+
+  // Set up the output object.
+  result.middleIndex = middleIndexStart + middleIndexOffset;
+  result.bottomDubletIndex = bottomDubletIndex;
+  result.tripletIndex = remaining;
 
   // Return the indices.
   return result;

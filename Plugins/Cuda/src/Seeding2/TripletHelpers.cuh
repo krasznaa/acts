@@ -31,10 +31,28 @@ struct TripletFinderIndices {
 
 /// Helper function figuring out which triplet combination to evaluate in a
 /// given device thread.
-__host__ __device__ TripletFinderIndices findTripletIndex(
+__host__ __device__ TripletFinderIndices tripletFinderIndex(
     std::size_t i, std::size_t middleIndexStart, std::size_t nParallelMiddleSPs,
     const unsigned int* middleBottomDubletCounts,
     const unsigned int* middleTopDubletCounts);
+
+/// Struct returning the indices of the objects to use in the triplet filtering
+struct TripletFilterIndices {
+  /// Index of the middle spacepoint
+  std::size_t middleIndex = 0;
+  /// Index of the middle-bottom dublet
+  std::size_t bottomDubletIndex = 0;
+  /// Index of the triplet candidate amongst all the candidates for this
+  /// middle-bottom spacepoint combination
+  std::size_t tripletIndex = 0;
+};
+
+/// Helper function figuring out which triplet candidate to evaluate for
+/// filtering in a given device thread.
+__host__ __device__ TripletFilterIndices tripletFilterIndex(
+    std::size_t i, std::size_t middleIndexStart, std::size_t nParallelMiddleSPs,
+    std::size_t maxMBDublets, const unsigned int* middleBottomDubletCounts,
+    const unsigned int* tripletsPerBottomDublet);
 
 }  // namespace Details
 }  // namespace Cuda

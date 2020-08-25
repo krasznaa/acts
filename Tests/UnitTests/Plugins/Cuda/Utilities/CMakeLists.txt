@@ -10,4 +10,5 @@ add_unittest(Cuda CudaTests.cu)
 add_unittest(CudaMostSimplified CudaMostSimplifiedTests.cu)
 add_unittest(CudaTripletHelpers TripletHelpersTests.cu
   ../../../../../Plugins/Cuda/src/Seeding2/TripletHelpers.cuh
-  ../../../../../Plugins/Cuda/src/Seeding2/TripletHelpers.cu)
+  ../../../../../Plugins/Cuda/src/Seeding2/TripletHelpers.cu
+  ../../../../../Plugins/Cuda/src/Utilities/MatrixMacros.hpp)
