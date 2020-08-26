@@ -52,6 +52,7 @@ struct LinCircle {
 /// Structure used in the CUDA-based triplet finding
 struct Triplet {
   std::size_t bottomIndex = static_cast<std::size_t>(-1);
+  std::size_t middleIndex = static_cast<std::size_t>(-1);
   std::size_t topIndex = static_cast<std::size_t>(-1);
   float impactParameter = 0.0f;
   float invHelixDiameter = 0.0f;
