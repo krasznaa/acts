@@ -12,8 +12,6 @@
 #include "Acts/Plugins/Cuda/Seeding2/TripletFilterConfig.hpp"
 #include "../Utilities/ErrorCheck.cuh"
 #include "../Utilities/MatrixMacros.hpp"
-#include "../Utilities/StreamHandlers.cuh"
-#include "TripletHelpers.cuh"
 
 // Acts include(s).
 #include "Acts/Seeding/SeedFilterConfig.hpp"
@@ -25,8 +23,6 @@
 #include <cassert>
 #include <cmath>
 #include <cstring>
-
-#include <iostream>
 
 namespace Acts {
 namespace Cuda {
@@ -182,7 +178,6 @@ __global__ void transformCoordinates(
 ///            booked
 /// @param[in] nParallelMiddleSPs The number of middle spacepoints that the
 ///            kernel was started on in parallel
-/// @param[in] nTriplets The total number of triplets evaluated by the kernel
 /// @param[in] nBottomSPs The number of bottom spacepoints in @c bottomSPs
 /// @param[in] bottomSPs Properties of all of the bottom spacepoints
 /// @param[in] nMiddleSPs The number of middle spacepoints in @c middleSPs
@@ -223,8 +218,7 @@ __global__ void transformCoordinates(
 __global__ void findTriplets(
     std::size_t middleIndexStart, unsigned int maxMBDublets,
     unsigned int maxMTDublets, unsigned int maxTriplets,
-    std::size_t nParallelMiddleSPs, std::size_t nTriplets,
-    std::size_t nBottomSPs,
+    std::size_t nParallelMiddleSPs, std::size_t nBottomSPs,
     const Details::SpacePoint* bottomSPs, std::size_t nMiddleSPs,
     const Details::SpacePoint* middleSPs, std::size_t nTopSPs,
     const Details::SpacePoint* topSPs, const unsigned int* middleBottomCounts,
@@ -583,7 +577,7 @@ __global__ void filterTriplets2Sp(
 namespace Details {
 
 std::vector<std::vector<Triplet>> findTriplets(
-    const Info::Device& device, const StreamWrapper& stream, std::size_t maxBlockSize,
+    const Info::Device& device, std::size_t maxBlockSize,
     const DubletCounts& dubletCounts, const SeedFilterConfig& seedConfig,
     const TripletFilterConfig& filterConfig, std::size_t nBottomSPs,
     const device_array<SpacePoint>& bottomSPs, std::size_t nMiddleSPs,
@@ -595,11 +589,6 @@ std::vector<std::vector<Triplet>> findTriplets(
     const device_array<std::size_t>& middleTopDublets,
     float maxScatteringAngle2, float sigmaScattering, float minHelixDiameter2,
     float pT2perRadius, float impactMax) {
-  // Access the stream that we'll use for the triplet finding.
-  cudaStream_t cuStream = getStreamFrom(stream);
-  assert(cuStream != nullptr);
-  // The amount of shared/local memory needed by the kernels.
-  static constexpr int SHAREDMEM = 0;
 
   // Calculate the parallelisation for the parameter transformation.
   const int numBlocksLT =
@@ -612,8 +601,7 @@ std::vector<std::vector<Triplet>> findTriplets(
       make_device_array<LinCircle>(nMiddleSPs * dubletCounts.maxMTDublets);
 
   // Launch the coordinate transformations.
-  Kernels::
-      transformCoordinates<<<numBlocksLT, maxBlockSize, SHAREDMEM, cuStream>>>(
+  Kernels::transformCoordinates<<<numBlocksLT, maxBlockSize>>>(
           dubletCounts.nDublets, dubletCounts.maxMBDublets,
           dubletCounts.maxMTDublets, nBottomSPs, bottomSPs.get(), nMiddleSPs,
           middleSPs.get(), nTopSPs, topSPs.get(), middleBottomCounts.get(),
@@ -621,6 +609,7 @@ std::vector<std::vector<Triplet>> findTriplets(
           middleTopDublets.get(), bottomSPLinTransArray.get(),
           topSPLinTransArray.get());
   ACTS_CUDA_ERROR_CHECK(cudaGetLastError());
+  ACTS_CUDA_ERROR_CHECK(cudaDeviceSynchronize());
 
   /// Maximum allowed memory
   static constexpr std::size_t MAX_MEMORY = 1600 * 1024 * 1024;
@@ -705,30 +694,18 @@ std::vector<std::vector<Triplet>> findTriplets(
 
   // Copy the dublet counts back to the host.
   auto middleBottomCountsHost = make_host_array<unsigned int>(nMiddleSPs);
-  copyToHost(middleBottomCountsHost, middleBottomCounts, nMiddleSPs, stream);
+  copyToHost(middleBottomCountsHost, middleBottomCounts, nMiddleSPs);
   auto middleTopCountsHost = make_host_array<unsigned int>(nMiddleSPs);
-  copyToHost(middleTopCountsHost, middleTopCounts, nMiddleSPs, stream);
-  stream.synchronize();
+  copyToHost(middleTopCountsHost, middleTopCounts, nMiddleSPs);
 
   // Execute the triplet finding and filtering separately for each middle
   // spacepoint.
   for (std::size_t middleIndex = 0; middleIndex < nMiddleSPs;
        middleIndex += nParallelMiddleSPs) {
     // Reset the device arrays.
-    copyToDevice(objectCounts, objectCountsHostNull, NObjectCountTypes, stream);
+    copyToDevice(objectCounts, objectCountsHostNull, NObjectCountTypes);
     copyToDevice(tripletsPerBottomDublet, tripletsPerBottomDubletHost,
-                 nParallelMiddleSPs * dubletCounts.maxMBDublets, stream);
-
-    // Count how many triplets need to be evaluated for this group of middle
-    // spacepoints.
-    const std::size_t nTripletCandidates =
-        countTripletsToEvaluate(middleIndex, nParallelMiddleSPs,
-                                middleBottomCountsHost.get(),
-                                middleTopCountsHost.get());
-    if (nTripletCandidates == 0) {
-      // This is *very* unexpected, but not impossible...
-      continue;
-    }
+                 nParallelMiddleSPs * dubletCounts.maxMBDublets);
 
     // Calculate the parallelisation for the triplet finding for this collection
     // of middle spacepoints.
@@ -737,12 +714,13 @@ std::vector<std::vector<Triplet>> findTriplets(
                            blockSizeFT.x,
                            (dubletCounts.maxTriplets + blockSizeFT.y - 1) /
                            blockSizeFT.y);
+    assert(dubletCounts.maxTriplets > 0);
 
     // Launch the triplet finding for this middle spacepoint.
-    Kernels::findTriplets<<<numBlocksFT, blockSizeFT, SHAREDMEM, cuStream>>>(
+    Kernels::findTriplets<<<numBlocksFT, blockSizeFT>>>(
         // Parameters needed to use all the arrays.
         middleIndex, dubletCounts.maxMBDublets, dubletCounts.maxMTDublets,
-        dubletCounts.maxTriplets, nParallelMiddleSPs, nTripletCandidates,
+        dubletCounts.maxTriplets, nParallelMiddleSPs,
         // Parameters of all of the spacepoints.
         nBottomSPs, bottomSPs.get(), nMiddleSPs, middleSPs.get(), nTopSPs,
         topSPs.get(),
@@ -760,10 +738,10 @@ std::vector<std::vector<Triplet>> findTriplets(
         objectCounts.get() + MaxTripletsPerSpB,
         objectCounts.get() + AllTriplets, allTriplets.get());
     ACTS_CUDA_ERROR_CHECK(cudaGetLastError());
+    ACTS_CUDA_ERROR_CHECK(cudaDeviceSynchronize());
 
     // Retrieve the object counts.
-    copyToHost(objectCountsHost, objectCounts, NObjectCountTypes, stream);
-    stream.synchronize();
+    copyToHost(objectCountsHost, objectCounts, NObjectCountTypes);
     const unsigned int nAllTriplets = objectCountsHost.get()[AllTriplets];
     const unsigned int nMaxTripletsPerSpB =
         objectCountsHost.get()[MaxTripletsPerSpB];
@@ -782,12 +760,13 @@ std::vector<std::vector<Triplet>> findTriplets(
                              blockSizeF2SP.y,
                              (nMaxTripletsPerSpB + blockSizeF2SP.z - 1) /
                              blockSizeF2SP.z);
+    assert(dubletCounts.maxMBDublets > 0);
+    assert(nMaxTripletsPerSpB > 0);
 
     // Launch the "2SpFixed" filtering of the triplets.
     assert(filterConfig.seedWeight != nullptr);
     assert(filterConfig.singleSeedCut != nullptr);
-    Kernels::filterTriplets2Sp<<<numBlocksF2SP, blockSizeF2SP, SHAREDMEM,
-                                 cuStream>>>(
+    Kernels::filterTriplets2Sp<<<numBlocksF2SP, blockSizeF2SP>>>(
         // Pointers to the user provided filter functions.
         filterConfig.seedWeight, filterConfig.singleSeedCut,
         // Parameters needed to use all the arrays.
@@ -806,10 +785,10 @@ std::vector<std::vector<Triplet>> findTriplets(
         // Variables storing the results of the filtering.
         objectCounts.get() + FilteredTriplets, filteredTriplets.get());
     ACTS_CUDA_ERROR_CHECK(cudaGetLastError());
+    ACTS_CUDA_ERROR_CHECK(cudaDeviceSynchronize());
 
     // Retrieve the result counts of the filtering.
-    copyToHost(objectCountsHost, objectCounts, NObjectCountTypes, stream);
-    stream.synchronize();
+    copyToHost(objectCountsHost, objectCounts, NObjectCountTypes);
 
     // The number of triplets that survived the 2Sp filtering.
     const unsigned int nFilteredTriplets =

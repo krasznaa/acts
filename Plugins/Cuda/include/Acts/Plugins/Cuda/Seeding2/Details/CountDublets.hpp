@@ -11,7 +11,6 @@
 // CUDA2 plugin include(s).
 #include "Acts/Plugins/Cuda/Seeding2/Details/Types.hpp"
 #include "Acts/Plugins/Cuda/Utilities/Arrays.hpp"
-#include "Acts/Plugins/Cuda/Utilities/StreamWrapper.hpp"
 
 // System include(s).
 #include <cstddef>
@@ -27,7 +26,6 @@ namespace Details {
 /// scheduing of the subsequent steps of the execution on the GPU. This function
 /// is used to collect this information
 ///
-/// @param stream The CUDA stream to execute all operations in
 /// @param maxBlockSize The maximum block size to use on the GPU
 /// @param nMiddleSP The number of middle spacepoints for which the dublet
 ///        reconstruction was run
@@ -38,8 +36,7 @@ namespace Details {
 /// @return An object holding all the summary statistics necessary for the
 ///         subsequent steps of GPU execution
 ///
-DubletCounts countDublets(const StreamWrapper& stream, std::size_t maxBlockSize,
-                          std::size_t nMiddleSP,
+DubletCounts countDublets(std::size_t maxBlockSize, std::size_t nMiddleSP,
                           const device_array<unsigned int>& middleBottomCounts,
                           const device_array<unsigned int>& middleTopCounts);
 

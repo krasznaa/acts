@@ -35,8 +35,7 @@ SeedFinder<external_spacepoint_t>::SeedFinder(
     Acts::Logging::Level loggerLevel)
     : m_commonConfig(std::move(commonConfig)),
       m_seedFilterConfig(seedFilterConfig),
-      m_tripletFilterConfig(tripletFilterConfig), m_device(device),
-      m_stream(nullptr) {
+      m_tripletFilterConfig(tripletFilterConfig), m_device(device) {
   // calculation of scattering using the highland formula
   // convert pT to p once theta angle is known
   m_commonConfig.highland =
@@ -60,7 +59,6 @@ SeedFinder<external_spacepoint_t>::SeedFinder(
   if (m_device < Info::instance().devices().size()) {
     ACTS_INFO("Will be using device:\n"
               << Info::instance().devices()[m_device]);
-    m_stream = createStreamFor(Info::instance().devices()[m_device]);
   } else {
     ACTS_FATAL("Invalid CUDA device requested");
     throw std::runtime_error("Invalid CUDA device requested");
@@ -130,11 +128,9 @@ SeedFinder<external_spacepoint_t>::createSeedsForGroup(
       make_device_array<Details::SpacePoint>(middleSPVec.size());
   auto topSPDeviceArray =
       make_device_array<Details::SpacePoint>(topSPVec.size());
-  copyToDevice(bottomSPDeviceArray, bottomSPArray, bottomSPVec.size(),
-               m_stream);
-  copyToDevice(middleSPDeviceArray, middleSPArray, middleSPVec.size(),
-               m_stream);
-  copyToDevice(topSPDeviceArray, topSPArray, topSPVec.size(), m_stream);
+  copyToDevice(bottomSPDeviceArray, bottomSPArray, bottomSPVec.size());
+  copyToDevice(middleSPDeviceArray, middleSPArray, middleSPVec.size());
+  copyToDevice(topSPDeviceArray, topSPArray, topSPVec.size());
 
   //---------------------------------
   // GPU Execution
@@ -145,10 +141,9 @@ SeedFinder<external_spacepoint_t>::createSeedsForGroup(
   auto dubletCountsHost = make_host_array<unsigned int>(middleSPVec.size());
   memset(dubletCountsHost.get(), 0, middleSPVec.size() * sizeof(unsigned int));
   auto middleBottomCounts = make_device_array<unsigned int>(middleSPVec.size());
-  copyToDevice(middleBottomCounts, dubletCountsHost, middleSPVec.size(),
-               m_stream);
+  copyToDevice(middleBottomCounts, dubletCountsHost, middleSPVec.size());
   auto middleTopCounts = make_device_array<unsigned int>(middleSPVec.size());
-  copyToDevice(middleTopCounts, dubletCountsHost, middleSPVec.size(), m_stream);
+  copyToDevice(middleTopCounts, dubletCountsHost, middleSPVec.size());
 
   // Matrices holding the indices of the viable bottom-middle and middle-top
   // pairs.
@@ -158,7 +153,7 @@ SeedFinder<external_spacepoint_t>::createSeedsForGroup(
       make_device_array<std::size_t>(middleSPVec.size() * topSPVec.size());
 
   // Launch the dublet finding code.
-  Details::findDublets(m_stream, m_commonConfig.maxBlockSize,
+  Details::findDublets(m_commonConfig.maxBlockSize,
                        bottomSPVec.size(), bottomSPDeviceArray,
                        middleSPVec.size(), middleSPDeviceArray, topSPVec.size(),
                        topSPDeviceArray, m_commonConfig.deltaRMin,
@@ -170,7 +165,7 @@ SeedFinder<external_spacepoint_t>::createSeedsForGroup(
   // Count the number of dublets that we have to launch the subsequent steps
   // for.
   Details::DubletCounts dubletCounts = Details::countDublets(
-      m_stream, m_commonConfig.maxBlockSize, middleSPVec.size(),
+      m_commonConfig.maxBlockSize, middleSPVec.size(),
       middleBottomCounts, middleTopCounts);
 
   // If no dublets/triplet candidates have been found, stop here.
@@ -181,7 +176,7 @@ SeedFinder<external_spacepoint_t>::createSeedsForGroup(
   // Launch the triplet finding code on all of the previously found dublets.
   auto tripletCandidates = Details::findTriplets(
       Info::instance().devices()[m_device],
-      m_stream, m_commonConfig.maxBlockSize, dubletCounts, m_seedFilterConfig,
+      m_commonConfig.maxBlockSize, dubletCounts, m_seedFilterConfig,
       m_tripletFilterConfig, bottomSPVec.size(), bottomSPDeviceArray,
       middleSPVec.size(), middleSPDeviceArray, topSPVec.size(),
       topSPDeviceArray, middleBottomCounts, middleBottomDublets,

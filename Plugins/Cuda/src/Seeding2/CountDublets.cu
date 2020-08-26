@@ -10,7 +10,6 @@
 #include "Acts/Plugins/Cuda/Seeding2/Details/CountDublets.hpp"
 #include "Acts/Plugins/Cuda/Seeding2/Details/Types.hpp"
 #include "../Utilities/ErrorCheck.cuh"
-#include "../Utilities/StreamHandlers.cuh"
 
 // CUDA include(s).
 #include <cuda_runtime.h>
@@ -102,14 +101,9 @@ __global__ void countDublets(std::size_t nMiddleSPs,
 namespace Details {
 
 DubletCounts countDublets(
-    const StreamWrapper& stream, std::size_t maxBlockSize,
-    std::size_t nMiddleSP,
+    std::size_t maxBlockSize, std::size_t nMiddleSP,
     const device_array<unsigned int>& middleBottomCountArray,
     const device_array<unsigned int>& middleTopCountArray) {
-  // Access the stream that we'll use for the dublet counting.
-  cudaStream_t cuStream = getStreamFrom(stream);
-  assert(cuStream != nullptr);
-
   // Calculate the parallelisation for the dublet counting.
   const int numBlocks = (nMiddleSP + maxBlockSize - 1) / maxBlockSize;
   const int sharedMem = maxBlockSize * sizeof(DubletCounts);
@@ -119,17 +113,15 @@ DubletCounts countDublets(
   auto dubletCountsDevice = make_device_array<DubletCounts>(numBlocks);
 
   // Run the reduction kernel.
-  Kernels::countDublets<<<numBlocks, maxBlockSize, sharedMem, cuStream>>>(
+  Kernels::countDublets<<<numBlocks, maxBlockSize, sharedMem>>>(
       nMiddleSP, middleBottomCountArray.get(), middleTopCountArray.get(),
       dubletCountsDevice.get());
   ACTS_CUDA_ERROR_CHECK(cudaGetLastError());
+  ACTS_CUDA_ERROR_CHECK(cudaDeviceSynchronize());
 
   // Copy the sum(s) back to the host.
   auto dubletCountsHost = make_host_array<DubletCounts>(numBlocks);
-  copyToHost(dubletCountsHost, dubletCountsDevice, numBlocks, stream);
-
-  // And now wait for all calculations and memory copies to finish.
-  stream.synchronize();
+  copyToHost(dubletCountsHost, dubletCountsDevice, numBlocks);
 
   // Perform the final summation on the host. Assuming that the number of
   // middle space points is not so large that it would make sense to do the

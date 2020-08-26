@@ -59,9 +59,19 @@ host_array<T> make_host_array(std::size_t size);
 /// Copy one array from the host to the device
 template <typename T>
 void copyToDevice(device_array<T>& dev, const host_array<T>& host,
+                  std::size_t arraySize);
+
+/// Copy one array from the host to the device asynchronously
+template <typename T>
+void copyToDevice(device_array<T>& dev, const host_array<T>& host,
                   std::size_t arraySize, const StreamWrapper& stream);
 
 /// Copy one array from the device to the host
+template <typename T>
+void copyToHost(host_array<T>& host, const device_array<T>& dev,
+                std::size_t arraySize);
+
+/// Copy one array from the device to the host asynchronously
 template <typename T>
 void copyToHost(host_array<T>& host, const device_array<T>& dev,
                 std::size_t arraySize, const StreamWrapper& stream);
