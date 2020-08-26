@@ -11,6 +11,7 @@
 // CUDA plugin include(s).
 #include "Acts/Plugins/Cuda/Seeding2/Details/Types.hpp"
 #include "Acts/Plugins/Cuda/Utilities/Arrays.hpp"
+#include "Acts/Plugins/Cuda/Utilities/Info.hpp"
 #include "Acts/Plugins/Cuda/Utilities/StreamWrapper.hpp"
 
 // System include(s).
@@ -35,6 +36,7 @@ namespace Details {
 /// that still need to be filtered through
 /// @c Acts::SeedFilter::filterSeeds_1SpFixed before returning it to the user.
 ///
+/// @param[in] device Properties of the device that the code will be running on
 /// @param[in] stream The CUDA stream to execute all operations in
 /// @param[in] maxBlockSize The maximum block size to use on the GPU
 /// @param[in] dubletCounts The output object from
@@ -72,7 +74,7 @@ namespace Details {
 ///         for each middle spacepoint
 ///
 std::vector<std::vector<Triplet> > findTriplets(
-    const StreamWrapper& stream, std::size_t maxBlockSize,
+    const Info::Device& device, const StreamWrapper& stream, std::size_t maxBlockSize,
     const DubletCounts& dubletCounts, const SeedFilterConfig& seedConfig,
     const TripletFilterConfig& filterConfig, std::size_t nBottomSPs,
     const device_array<SpacePoint>& bottomSPs, std::size_t nMiddleSPs,

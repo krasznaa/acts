@@ -35,7 +35,7 @@ SeedFinder<external_spacepoint_t>::SeedFinder(
     Acts::Logging::Level loggerLevel)
     : m_commonConfig(std::move(commonConfig)),
       m_seedFilterConfig(seedFilterConfig),
-      m_tripletFilterConfig(tripletFilterConfig),
+      m_tripletFilterConfig(tripletFilterConfig), m_device(device),
       m_stream(nullptr) {
   // calculation of scattering using the highland formula
   // convert pT to p once theta angle is known
@@ -57,9 +57,10 @@ SeedFinder<external_spacepoint_t>::SeedFinder(
   // Tell the user what CUDA device will be used by the object.
   ACTS_LOCAL_LOGGER(
       Acts::getDefaultLogger("Acts::Cuda::SeedFinder", loggerLevel));
-  if (device < Info::instance().devices().size()) {
-    ACTS_INFO("Will be using device:\n" << Info::instance().devices()[device]);
-    m_stream = createStreamFor(Info::instance().devices()[device]);
+  if (m_device < Info::instance().devices().size()) {
+    ACTS_INFO("Will be using device:\n"
+              << Info::instance().devices()[m_device]);
+    m_stream = createStreamFor(Info::instance().devices()[m_device]);
   } else {
     ACTS_FATAL("Invalid CUDA device requested");
     throw std::runtime_error("Invalid CUDA device requested");
@@ -179,6 +180,7 @@ SeedFinder<external_spacepoint_t>::createSeedsForGroup(
 
   // Launch the triplet finding code on all of the previously found dublets.
   auto tripletCandidates = Details::findTriplets(
+      Info::instance().devices()[m_device],
       m_stream, m_commonConfig.maxBlockSize, dubletCounts, m_seedFilterConfig,
       m_tripletFilterConfig, bottomSPVec.size(), bottomSPDeviceArray,
       middleSPVec.size(), middleSPDeviceArray, topSPVec.size(),

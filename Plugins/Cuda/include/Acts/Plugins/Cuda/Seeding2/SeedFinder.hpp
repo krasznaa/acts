@@ -62,6 +62,8 @@ class SeedFinder {
   SeedFilterConfig m_seedFilterConfig;
   /// Configuration for the (device) triplet filter
   TripletFilterConfig m_tripletFilterConfig;
+  /// CUDA device identifier
+  std::size_t m_device;
   /// CUDA stream to run the offloaded calculations in
   StreamWrapper m_stream;
 };

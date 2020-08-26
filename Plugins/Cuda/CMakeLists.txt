@@ -33,6 +33,8 @@ add_library(
   src/Seeding2/CountDublets.cu
   src/Seeding2/FindDublets.cu
   src/Seeding2/FindTriplets.cu
+  src/Seeding2/TripletHelpers.cuh
+  src/Seeding2/TripletHelpers.cu
   src/Utilities/Arrays.cu
   src/Utilities/ErrorCheck.cuh
   src/Utilities/ErrorCheck.cu
