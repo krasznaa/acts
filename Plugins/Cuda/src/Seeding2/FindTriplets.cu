@@ -10,6 +10,7 @@
 #include "Acts/Plugins/Cuda/Seeding2/Details/FindTriplets.hpp"
 #include "Acts/Plugins/Cuda/Seeding2/Details/Types.hpp"
 #include "Acts/Plugins/Cuda/Seeding2/TripletFilterConfig.hpp"
+#include "Acts/Plugins/Cuda/Utilities/MemoryManager.hpp"
 #include "../Utilities/ErrorCheck.cuh"
 #include "../Utilities/MatrixMacros.hpp"
 
@@ -218,7 +219,8 @@ __global__ void transformCoordinates(
 __global__ void findTriplets(
     std::size_t middleIndexStart, unsigned int maxMBDublets,
     unsigned int maxMTDublets, unsigned int maxTriplets,
-    std::size_t nParallelMiddleSPs, std::size_t nBottomSPs,
+    std::size_t nParallelMiddleSPs, std::size_t nMiddleSPsProcessed,
+    std::size_t nBottomSPs,
     const Details::SpacePoint* bottomSPs, std::size_t nMiddleSPs,
     const Details::SpacePoint* middleSPs, std::size_t nTopSPs,
     const Details::SpacePoint* topSPs, const unsigned int* middleBottomCounts,
@@ -232,11 +234,11 @@ __global__ void findTriplets(
     unsigned int* maxTripletsPerSpB, unsigned int* tripletCount,
     Details::Triplet* triplets) {
   // A sanity check.
-  assert(middleIndexStart + nParallelMiddleSPs <= nMiddleSPs);
+  assert(middleIndexStart + nMiddleSPsProcessed <= nMiddleSPs);
 
   // Find the middle spacepoint index to operate on.
   const unsigned int middleIndexOffset = blockIdx.x * blockDim.x + threadIdx.x;
-  if (middleIndexOffset >= nParallelMiddleSPs) {
+  if (middleIndexOffset >= nMiddleSPsProcessed) {
     return;
   }
   const unsigned int middleIndex = middleIndexStart + middleIndexOffset;
@@ -436,6 +438,7 @@ __global__ void filterTriplets2Sp(
     std::size_t middleIndexStart, unsigned int maxMBDublets,
     unsigned int maxMTDublets, unsigned int maxTriplets,
     unsigned int nAllTriplets, std::size_t nParallelMiddleSPs,
+    std::size_t nMiddleSPsProcessed,
     unsigned int* middleBottomCounts, std::size_t nBottomSPs,
     const Details::SpacePoint* bottomSPs, std::size_t nMiddleSPs,
     const Details::SpacePoint* middleSPs, std::size_t nTopSPs,
@@ -448,11 +451,11 @@ __global__ void filterTriplets2Sp(
   // Sanity checks.
   assert(seedWeight != nullptr);
   assert(singleSeedCut != nullptr);
-  assert(middleIndexStart + nParallelMiddleSPs <= nMiddleSPs);
+  assert(middleIndexStart + nMiddleSPsProcessed <= nMiddleSPs);
 
   // Find the middle spacepoint index to operate on.
   const unsigned int middleIndexOffset = blockIdx.x * blockDim.x + threadIdx.x;
-  if (middleIndexOffset >= nParallelMiddleSPs) {
+  if (middleIndexOffset >= nMiddleSPsProcessed) {
     return;
   }
   const unsigned int middleIndex = middleIndexStart + middleIndexOffset;
@@ -611,9 +614,6 @@ std::vector<std::vector<Triplet>> findTriplets(
   ACTS_CUDA_ERROR_CHECK(cudaGetLastError());
   ACTS_CUDA_ERROR_CHECK(cudaDeviceSynchronize());
 
-  /// Maximum allowed memory
-  static constexpr std::size_t MAX_MEMORY = 1600 * 1024 * 1024;
-
   // With the information from @c Acts::Cuda::Details::DubletCounts, figure out
   // how many middle spacepoints we could handle at the same time in the triplet
   // finding/filtering.
@@ -626,11 +626,15 @@ std::vector<std::vector<Triplet>> findTriplets(
       // dublet.
       dubletCounts.maxMBDublets * sizeof(unsigned int) +
       dubletCounts.maxMBDublets * dubletCounts.maxMTDublets *
-      sizeof(std::size_t);
+      sizeof(std::size_t) +
+      // Finally the array holding the filtered triplet counts per middle
+      // spacepoint.
+      sizeof(unsigned int);
 
   // See how many we can fit into the maximal allowed memory.
   const std::size_t nParallelMiddleSPs =
-      std::min(MAX_MEMORY / memorySizePerMiddleSP, nMiddleSPs);
+      std::min(MemoryManager::instance().availableMemory(device.id) /
+               memorySizePerMiddleSP, nMiddleSPs);
   assert(nParallelMiddleSPs > 0);
 
   // Helper variables for handling the various object counts in device memory.
@@ -707,10 +711,14 @@ std::vector<std::vector<Triplet>> findTriplets(
     copyToDevice(tripletsPerBottomDublet, tripletsPerBottomDubletHost,
                  nParallelMiddleSPs * dubletCounts.maxMBDublets);
 
+    // The number of middle spacepoints to process in this iteration.
+    const std::size_t nMiddleSPsProcessed = std::min(nParallelMiddleSPs,
+                                                     nMiddleSPs - middleIndex);
+
     // Calculate the parallelisation for the triplet finding for this collection
     // of middle spacepoints.
     const dim3 blockSizeFT(1, maxBlockSize);
-    const dim3 numBlocksFT((nParallelMiddleSPs + blockSizeFT.x - 1) /
+    const dim3 numBlocksFT((nMiddleSPsProcessed + blockSizeFT.x - 1) /
                            blockSizeFT.x,
                            (dubletCounts.maxTriplets + blockSizeFT.y - 1) /
                            blockSizeFT.y);
@@ -720,7 +728,7 @@ std::vector<std::vector<Triplet>> findTriplets(
     Kernels::findTriplets<<<numBlocksFT, blockSizeFT>>>(
         // Parameters needed to use all the arrays.
         middleIndex, dubletCounts.maxMBDublets, dubletCounts.maxMTDublets,
-        dubletCounts.maxTriplets, nParallelMiddleSPs,
+        dubletCounts.maxTriplets, nParallelMiddleSPs, nMiddleSPsProcessed,
         // Parameters of all of the spacepoints.
         nBottomSPs, bottomSPs.get(), nMiddleSPs, middleSPs.get(), nTopSPs,
         topSPs.get(),
@@ -754,7 +762,7 @@ std::vector<std::vector<Triplet>> findTriplets(
     // Calculate the parallelisation for the "2SpFixed" filtering of the
     // triplets.
     const dim3 blockSizeF2SP(1, blockSize, blockSize);
-    const dim3 numBlocksF2SP((nParallelMiddleSPs + blockSizeF2SP.x - 1) /
+    const dim3 numBlocksF2SP((nMiddleSPsProcessed + blockSizeF2SP.x - 1) /
                              blockSizeF2SP.x,
                              (dubletCounts.maxMBDublets + blockSizeF2SP.y - 1) /
                              blockSizeF2SP.y,
@@ -772,7 +780,7 @@ std::vector<std::vector<Triplet>> findTriplets(
         // Parameters needed to use all the arrays.
         middleIndex, dubletCounts.maxMBDublets, dubletCounts.maxMTDublets,
         dubletCounts.maxTriplets, nAllTriplets, nParallelMiddleSPs,
-        middleBottomCounts.get(),
+        nMiddleSPsProcessed, middleBottomCounts.get(),
         // Parameters of all of the spacepoints.
         nBottomSPs, bottomSPs.get(), nMiddleSPs, middleSPs.get(), nTopSPs,
         topSPs.get(),

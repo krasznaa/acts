@@ -15,6 +15,7 @@
 #include "Acts/Plugins/Cuda/Seeding2/Details/Types.hpp"
 #include "Acts/Plugins/Cuda/Utilities/Arrays.hpp"
 #include "Acts/Plugins/Cuda/Utilities/Info.hpp"
+#include "Acts/Plugins/Cuda/Utilities/MemoryManager.hpp"
 
 // Acts include(s).
 #include "Acts/Seeding/InternalSeed.hpp"
@@ -206,6 +207,9 @@ SeedFinder<external_spacepoint_t>::createSeedsForGroup(
     }
     m_commonConfig.seedFilter->filterSeeds_1SpFixed(seedsPerSPM, outputVec);
   }
+
+  // Free up all allocated device memory.
+  MemoryManager::instance().reset(m_device);
 
   // Return the collected spacepoints.
   return outputVec;
