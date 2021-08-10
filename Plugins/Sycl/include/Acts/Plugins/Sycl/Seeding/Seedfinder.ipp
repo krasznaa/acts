@@ -11,6 +11,9 @@
 #include <cmath>
 #include <utility>
 
+// VecMem include(s).
+#include "vecmem/containers/vector.hpp"
+
 // Acts include(s).
 #include "Acts/Seeding/InternalSeed.hpp"
 #include "Acts/Seeding/InternalSpacePoint.hpp"
@@ -74,9 +77,9 @@ Seedfinder<external_spacepoint_t>::createSeedsForGroup(
   // that are easily comprehensible by the GPU. This allows us
   // less memory access operations than with simple (float) arrays.
 
-  std::vector<detail::DeviceSpacePoint> deviceBottomSPs;
-  std::vector<detail::DeviceSpacePoint> deviceMiddleSPs;
-  std::vector<detail::DeviceSpacePoint> deviceTopSPs;
+  vecmem::vector<detail::DeviceSpacePoint> deviceBottomSPs(m_resource);
+  vecmem::vector<detail::DeviceSpacePoint> deviceMiddleSPs(m_resource);
+  vecmem::vector<detail::DeviceSpacePoint> deviceTopSPs(m_resource);
 
   std::vector<const Acts::InternalSpacePoint<external_spacepoint_t>*>
       bottomSPvec;
@@ -86,31 +89,37 @@ Seedfinder<external_spacepoint_t>::createSeedsForGroup(
 
   for (const Acts::InternalSpacePoint<external_spacepoint_t>* SP : bottomSPs) {
     bottomSPvec.push_back(SP);
-    deviceBottomSPs.push_back(
-        detail::DeviceSpacePoint{SP->x(), SP->y(), SP->z(), SP->radius(),
-                                 SP->varianceR(), SP->varianceZ()});
+  }
+  deviceBottomSPs.reserve(bottomSPvec.size());
+  for (const Acts::InternalSpacePoint<external_spacepoint_t>* SP : bottomSPvec) {
+    deviceBottomSPs.push_back({SP->x(), SP->y(), SP->z(), SP->radius(),
+                               SP->varianceR(), SP->varianceZ()});
   }
 
   for (const Acts::InternalSpacePoint<external_spacepoint_t>* SP : middleSPs) {
     middleSPvec.push_back(SP);
-    deviceMiddleSPs.push_back(
-        detail::DeviceSpacePoint{SP->x(), SP->y(), SP->z(), SP->radius(),
-                                 SP->varianceR(), SP->varianceZ()});
+  }
+  deviceMiddleSPs.reserve(middleSPvec.size());
+  for (const Acts::InternalSpacePoint<external_spacepoint_t>* SP : middleSPvec) {
+    deviceMiddleSPs.push_back({SP->x(), SP->y(), SP->z(), SP->radius(),
+                               SP->varianceR(), SP->varianceZ()});
   }
 
   for (const Acts::InternalSpacePoint<external_spacepoint_t>* SP : topSPs) {
     topSPvec.push_back(SP);
-    deviceTopSPs.push_back(
-        detail::DeviceSpacePoint{SP->x(), SP->y(), SP->z(), SP->radius(),
-                                 SP->varianceR(), SP->varianceZ()});
+  }
+  deviceTopSPs.reserve(topSPvec.size());
+  for (const Acts::InternalSpacePoint<external_spacepoint_t>* SP : topSPvec) {
+    deviceTopSPs.push_back({SP->x(), SP->y(), SP->z(), SP->radius(),
+                            SP->varianceR(), SP->varianceZ()});
   }
 
   std::vector<std::vector<detail::SeedData>> seeds;
 
   // Call the SYCL seeding algorithm
-  createSeedsForGroupSycl(m_wrappedQueue, m_deviceConfig, m_deviceCuts,
-                          deviceBottomSPs, deviceMiddleSPs, deviceTopSPs,
-                          seeds);
+  createSeedsForGroupSycl(m_wrappedQueue, *m_resource, m_deviceConfig,
+                          m_deviceCuts, deviceBottomSPs, deviceMiddleSPs,
+                          deviceTopSPs, seeds);
 
   // Iterate through seeds returned by the SYCL algorithm and perform the last
   // step of filtering for fixed middle SP.

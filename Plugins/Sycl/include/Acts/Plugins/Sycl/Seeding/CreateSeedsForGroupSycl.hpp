@@ -11,6 +11,10 @@
 // System include(s)
 #include <vector>
 
+// VecMem include(s).
+#include "vecmem/containers/vector.hpp"
+#include "vecmem/memory/memory_resource.hpp"
+
 // SYCL plugin include(s)
 #include "Acts/Plugins/Sycl/Seeding/DeviceExperimentCuts.hpp"
 #include "Acts/Plugins/Sycl/Seeding/detail/Types.hpp"
@@ -34,10 +38,11 @@ namespace Acts::Sycl {
 /// @param[out] seeds holds of the generated seed indices and weight
 void createSeedsForGroupSycl(
     QueueWrapper wrappedQueue,
+    vecmem::memory_resource& resource,
     const detail::DeviceSeedfinderConfig& seedfinderConfig,
     const DeviceExperimentCuts& deviceCuts,
-    const std::vector<detail::DeviceSpacePoint>& bottomSPs,
-    const std::vector<detail::DeviceSpacePoint>& middleSPs,
-    const std::vector<detail::DeviceSpacePoint>& topSPs,
+    const vecmem::vector<detail::DeviceSpacePoint>& bottomSPs,
+    const vecmem::vector<detail::DeviceSpacePoint>& middleSPs,
+    const vecmem::vector<detail::DeviceSpacePoint>& topSPs,
     std::vector<std::vector<detail::SeedData>>& seeds);
 }  // namespace Acts::Sycl

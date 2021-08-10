@@ -38,11 +38,12 @@ class filter_2sp_fixed_kernel;
 
 void createSeedsForGroupSycl(
     QueueWrapper wrappedQueue,
+    vecmem::memory_resource& resource,
     const detail::DeviceSeedfinderConfig& seedfinderConfig,
     const DeviceExperimentCuts& deviceCuts,
-    const std::vector<detail::DeviceSpacePoint>& bottomSPs,
-    const std::vector<detail::DeviceSpacePoint>& middleSPs,
-    const std::vector<detail::DeviceSpacePoint>& topSPs,
+    const vecmem::vector<detail::DeviceSpacePoint>& bottomSPs,
+    const vecmem::vector<detail::DeviceSpacePoint>& middleSPs,
+    const vecmem::vector<detail::DeviceSpacePoint>& topSPs,
     std::vector<std::vector<detail::SeedData>>& seeds) {
   // Each vector stores data of space points in simplified
   // structures of float variables
