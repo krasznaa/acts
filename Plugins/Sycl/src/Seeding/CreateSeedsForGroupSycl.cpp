@@ -136,8 +136,8 @@ void createSeedsForGroupSycl(
       q->submit([&](cl::sycl::handler& h) {
         AtomicAccessor countBotDupletsAcc(countBotBuf, h);
         detail::DupletSearch<detail::SpacePointType::Bottom, AtomicAccessor>
-            kernel(M, deviceMiddleSPs, B, deviceBottomSPs, deviceTmpIndBot,
-                   countBotDupletsAcc, seedfinderConfig);
+            kernel(vecmem::get_data(middleSPs), vecmem::get_data(bottomSPs),
+                   deviceTmpIndBot, countBotDupletsAcc, seedfinderConfig);
         h.parallel_for<class DupletSearchBottomKernel>(bottomDupletNDRange,
                                                        kernel);
       });
@@ -146,8 +146,8 @@ void createSeedsForGroupSycl(
       q->submit([&](cl::sycl::handler& h) {
         AtomicAccessor countTopDupletsAcc(countTopBuf, h);
         detail::DupletSearch<detail::SpacePointType::Top, AtomicAccessor>
-            kernel(M, deviceMiddleSPs, T, deviceTopSPs, deviceTmpIndTop,
-                   countTopDupletsAcc, seedfinderConfig);
+            kernel(vecmem::get_data(middleSPs), vecmem::get_data(topSPs),
+                   deviceTmpIndTop, countTopDupletsAcc, seedfinderConfig);
         h.parallel_for<class DupletSearchTopKernel>(topDupletNDRange, kernel);
       });
     }  // sync (buffers get destroyed and duplet counts are copied back to
