@@ -15,7 +15,9 @@
 #include "SpacePointType.hpp"
 
 // VecMem include(s).
+#include "vecmem/containers/data/jagged_vector_view.hpp"
 #include "vecmem/containers/data/vector_view.hpp"
+#include "vecmem/containers/jagged_device_vector.hpp"
 #include "vecmem/containers/device_vector.hpp"
 
 // SYCL include(s).
@@ -27,7 +29,7 @@
 namespace Acts::Sycl::detail {
 
 /// Functor taking care of finding viable spacepoint duplets
-template <SpacePointType OtherSPType, class AtomicAccessorType>
+template <SpacePointType OtherSPType>
 class DupletSearch {
   // Sanity check(s).
   static_assert((OtherSPType == SpacePointType::Bottom) ||
@@ -40,13 +42,11 @@ class DupletSearch {
   /// Constructor with all the necessary arguments
   DupletSearch(vecmem::data::vector_view<const DeviceSpacePoint> middleSPs,
                vecmem::data::vector_view<const DeviceSpacePoint> otherSPs,
-               device_array<uint32_t>& middleOtherSPIndices,
-               const AtomicAccessorType& middleOtherSPCounts,
+               vecmem::data::jagged_vector_view<uint32_t> middleOtherSPIndices,
                const DeviceSeedfinderConfig& config)
       : m_middleSPs(middleSPs),
         m_otherSPs(otherSPs),
-        m_middleOtherSPIndices(middleOtherSPIndices.get()),
-        m_middleOtherSPCounts(middleOtherSPCounts),
+        m_middleOtherSPIndices(middleOtherSPIndices),
         m_config(config) {}
 
   /// Operator performing the duplet search
@@ -90,8 +90,9 @@ class DupletSearch {
         (zOrigin >= m_config.collisionRegionMin) &&
         (zOrigin <= m_config.collisionRegionMax)) {
       // We keep counting duplets with atomic access.
-      const uint32_t ind = m_middleOtherSPCounts[middleIndex].fetch_add(1);
-      m_middleOtherSPIndices[middleIndex * otherSPs.size() + ind] = otherIndex;
+      vecmem::jagged_device_vector<uint32_t>
+          middleOtherSPIndices(m_middleOtherSPIndices);
+      middleOtherSPIndices.at(middleIndex).push_back(otherIndex);
     }
   }
 
@@ -102,10 +103,7 @@ class DupletSearch {
   vecmem::data::vector_view<const DeviceSpacePoint> m_otherSPs;
 
   /// The 2D array storing the compatible middle-other spacepoint indices
-  uint32_t* m_middleOtherSPIndices;
-  /// The atomic accessor used for modifying the count of compatible
-  /// middle-other spacepoint duplets
-  AtomicAccessorType m_middleOtherSPCounts;
+  vecmem::data::jagged_vector_view<uint32_t> m_middleOtherSPIndices;
 
   /// Configuration for the seed finding
   DeviceSeedfinderConfig m_config;
