@@ -24,10 +24,12 @@ template <typename external_spacepoint_t>
 Seedfinder<external_spacepoint_t>::Seedfinder(
     Acts::SeedfinderConfig<external_spacepoint_t> config,
     const Acts::Sycl::DeviceExperimentCuts& cuts,
-    Acts::Sycl::QueueWrapper wrappedQueue)
+    Acts::Sycl::QueueWrapper wrappedQueue,
+    vecmem::memory_resource& resource)
     : m_config(config),
       m_deviceCuts(cuts),
-      m_wrappedQueue(std::move(wrappedQueue)) {
+      m_wrappedQueue(std::move(wrappedQueue)),
+      m_resource(&resource) {
   // init m_config
   m_config.highland = 13.6f * std::sqrt(m_config.radLengthPerSeed) *
                       (1 + 0.038f * std::log(m_config.radLengthPerSeed));
