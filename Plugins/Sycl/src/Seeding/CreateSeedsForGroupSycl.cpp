@@ -1,6 +1,6 @@
 // This file is part of the Acts project.
 //
-// Copyright (C) 2020 CERN for the benefit of the Acts project
+// Copyright (C) 2020-2021 CERN for the benefit of the Acts project
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -37,7 +37,7 @@ class triplet_search_kernel;
 class filter_2sp_fixed_kernel;
 
 void createSeedsForGroupSycl(
-    const QueueWrapper& wrappedQueue,
+    QueueWrapper wrappedQueue,
     const detail::DeviceSeedfinderConfig& seedfinderConfig,
     const DeviceExperimentCuts& deviceCuts,
     const std::vector<detail::DeviceSpacePoint>& bottomSPs,
