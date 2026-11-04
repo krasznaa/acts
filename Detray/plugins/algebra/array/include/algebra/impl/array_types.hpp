@@ -58,7 +58,7 @@ template <concepts::scalar T>
 using transform3 =
     algebra::generic::math::transform3<algebra::array::index_type, T,
                                        algebra::array::matrix_type,
-                                       algebra::array::storage_type>;
+                                       std::array>;
 
 /// Element Getter
 using element_getter = array::storage::element_getter;
